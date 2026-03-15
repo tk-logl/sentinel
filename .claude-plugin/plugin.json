@@ -1,0 +1,19 @@
+{
+  "name": "sentinel",
+  "version": "1.0.0",
+  "description": "Universal AI code quality enforcement — prevents 47 common AI mistakes, enforces surgical edits, blocks dummy code, manages context memory",
+  "author": {
+    "name": "logl.ai",
+    "url": "https://github.com/tk-logl"
+  },
+  "repository": "https://github.com/tk-logl/sentinel",
+  "license": "MIT",
+  "keywords": [
+    "code-quality",
+    "enforcement",
+    "ai-mistakes",
+    "surgical-edits",
+    "context-memory"
+  ],
+  "skills": "./skills/"
+}

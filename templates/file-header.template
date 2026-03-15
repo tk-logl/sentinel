@@ -1,0 +1,54 @@
+# File Header Templates
+# Use these as starting points for /sentinel:header
+
+## Python (.py)
+"""
+{filename} — {Role: one sentence describing what this file does}.
+
+Co-modify: {file1.py}, {file2.py}, {file3.py}
+Invariants:
+  - {Rule that must never break #1}
+  - {Rule that must never break #2}
+  - {Rule that must never break #3}
+Verify: {command to test this file}
+"""
+
+## TypeScript (.ts/.tsx)
+/**
+ * {filename} — {Role: one sentence describing what this file does}.
+ *
+ * Co-modify: {file1.ts}, {file2.tsx}, {file3.ts}
+ * Invariants:
+ *   - {Rule that must never break #1}
+ *   - {Rule that must never break #2}
+ * Verify: {command to test this file}
+ */
+
+## Go (.go)
+// {filename} — {Role: one sentence describing what this file does}.
+//
+// Co-modify: {file1.go}, {file2.go}
+// Invariants:
+//   - {Rule that must never break #1}
+//   - {Rule that must never break #2}
+// Verify: {command to test this file}
+
+## Rust (.rs)
+//! {filename} — {Role: one sentence describing what this file does}.
+//!
+//! Co-modify: {file1.rs}, {file2.rs}
+//! Invariants:
+//!   - {Rule that must never break #1}
+//!   - {Rule that must never break #2}
+//! Verify: {command to test this file}
+
+## Java (.java)
+/**
+ * {ClassName} — {Role: one sentence describing what this class does}.
+ *
+ * Co-modify: {File1.java}, {File2.java}
+ * Invariants:
+ *   - {Rule that must never break #1}
+ *   - {Rule that must never break #2}
+ * Verify: {command to test this class}
+ */

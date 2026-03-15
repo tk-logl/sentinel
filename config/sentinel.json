@@ -1,0 +1,40 @@
+{
+  "language": "auto",
+  "source_extensions": ["py", "ts", "tsx", "js", "jsx", "go", "rs", "java", "c", "cpp", "svelte", "vue"],
+  "skip_patterns": [
+    "**/test_*",
+    "**/*.test.*",
+    "**/*.spec.*",
+    "**/tests/**",
+    "**/__pycache__/**",
+    "**/node_modules/**",
+    "**/.sentinel/**",
+    "**/.claude/**",
+    "**/.omc/**"
+  ],
+  "linters": {
+    "python": "ruff",
+    "typescript": "eslint",
+    "go": "golangci-lint",
+    "rust": "clippy"
+  },
+  "enforcement": {
+    "pre_edit_gate": true,
+    "deny_dummy": true,
+    "surgical_change": true,
+    "scope_guard": true,
+    "secret_scan": true,
+    "file_header_check": true,
+    "env_safety": true,
+    "error_logger": true
+  },
+  "header_threshold_lines": 200,
+  "error_repeat_limit": 3,
+  "surgical_change_max_lines": 15,
+  "state_dir": ".sentinel/state",
+  "notifications": {
+    "telegram": { "enabled": false },
+    "slack": { "enabled": false },
+    "discord": { "enabled": false }
+  }
+}

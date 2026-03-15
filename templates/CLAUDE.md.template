@@ -1,0 +1,44 @@
+# CLAUDE.md — Project Development Rules
+
+## Quality Standard
+- Type hints on ALL functions (params + return)
+- No raw SQL — ORM only
+- No print()/console.log() — use structured logging
+- No hardcoded secrets — environment variables only
+- No pass/TODO/FIXME/PLACEHOLDER — implement completely
+- No dead code, unused imports, orphan references
+- Every public API wired end-to-end and tested
+
+## Surgical Change Rule (ENFORCED)
+- Smallest diff possible — add before replace
+- Before modifying: `grep -rn "function_name" .` — list ALL callers
+- Before deleting: zero grep hits = safe. Any hit = fix callers first
+- Test blast radius — run existing tests before claiming safe
+
+## Pre-Implementation Checklist (ENFORCED)
+Before writing code, create `.sentinel/current-task.json`:
+```json
+{
+  "task_id": "TASK-1",
+  "why": "Business reason for this change",
+  "approach": "Chosen method + reasoning",
+  "impact_files": ["file.py:function — description"],
+  "blast_radius": {"tests_break": [], "tests_add": []},
+  "verify_command": "pytest -x && npm run build"
+}
+```
+
+## After Completing Work
+1. Run tests — all must pass
+2. Run linter — zero errors
+3. Verify no stub/placeholder code in changes
+4. Run verify_command from current-task.json
+5. Commit with descriptive message
+
+## Context Compaction
+When compacting, preserve:
+- Current branch + last 5 commits
+- All uncommitted changes
+- Active task from .sentinel/current-task.json
+- Recent error patterns
+- Files being edited and what changes were in progress

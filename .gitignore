@@ -1,0 +1,15 @@
+# Sentinel runtime state (per-project, not committed)
+.sentinel/state/
+.sentinel/error-log.jsonl
+.sentinel/current-task.json
+.sentinel/agent-results/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
