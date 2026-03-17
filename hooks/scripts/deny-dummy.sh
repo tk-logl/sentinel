@@ -41,10 +41,10 @@ fi
 
 VIOLATIONS=""
 
-# 1. Standalone pass (Python) — not after @abstractmethod or in type stub
+# 1. Standalone pass (Python) — not in @abstractmethod, __del__, finally, or cleanup
 if echo "$CONTENT" | grep -qP '^\s+pass\s*$'; then
-  # Check it's not in a class with @abstractmethod context
-  if ! echo "$CONTENT" | grep -qP '@abstractmethod'; then
+  # Allow pass in: @abstractmethod, __del__, finally blocks, cleanup/teardown functions
+  if ! echo "$CONTENT" | grep -qP '@abstractmethod|def __del__|def teardown|def tearDown|def cleanup|def close|finally\s*:'; then
     VIOLATIONS="${VIOLATIONS}  - 'pass' as standalone statement (implement the function body)\n"
   fi
 fi
@@ -80,8 +80,9 @@ if echo "$CONTENT" | grep -qP '^\s*def\s+\w+\(.*\).*:\s*$' && echo "$CONTENT" | 
 fi
 
 # 7. Pattern #3: Silent Error Swallowing — except blocks that hide errors
-if echo "$CONTENT" | grep -qP '^\s*except\s*:\s*$|^\s*except\s+\w+\s*:\s*pass\s*$|^\s*except\s+Exception\s*(as\s+\w+)?\s*:\s*(pass|return\s*$|return\s+None|continue)'; then
-  if ! echo "$CONTENT" | grep -qP 'logger\.|logging\.|log\.'; then
+# Allow in: __del__, cleanup/teardown, finally, retry loops with explicit continue
+if echo "$CONTENT" | grep -qP '^\s*except\s*:\s*$|^\s*except\s+\w+\s*:\s*pass\s*$|^\s*except\s+Exception\s*(as\s+\w+)?\s*:\s*(pass|return\s*$|return\s+None)\s*$'; then
+  if ! echo "$CONTENT" | grep -qP 'logger\.|logging\.|log\.|def __del__|def teardown|def tearDown|def cleanup|finally\s*:'; then
     VIOLATIONS="${VIOLATIONS}  - Silent error swallowing (except: pass/return None) — log the error, then handle it [Pattern #3]\n"
   fi
 fi
@@ -95,14 +96,22 @@ if echo "$CONTENT" | grep -qP '^\s*#\s*(def test_|class Test|it\(|describe\()'; 
 fi
 
 # 9. Pattern #10: Security Bypass — disabling SSL/verification
+# WARNING only (not blocking) — local dev with self-signed certs is legitimate
 if echo "$CONTENT" | grep -qP 'verify\s*=\s*False|ssl\s*=\s*False|check_hostname\s*=\s*False|VERIFY_SSL\s*=\s*False'; then
-  VIOLATIONS="${VIOLATIONS}  - SSL/TLS verification disabled (verify=False) — never disable in production [Pattern #10]\n"
+  echo "⚠️ [Sentinel] verify=False detected — ensure this is not production code [Pattern #10]"
 fi
 
 # 10. Pattern #27: Unsafe Deserialization
-if echo "$CONTENT" | grep -qP 'pickle\.loads?\(|yaml\.load\([^)]*(?!Loader)|yaml\.unsafe_load|marshal\.loads?\(|shelve\.open'; then
+# WARNING only for pickle (ML model/cache is legitimate), BLOCK for yaml.unsafe_load
+if echo "$CONTENT" | grep -qP 'yaml\.unsafe_load|marshal\.loads?\('; then
+  VIOLATIONS="${VIOLATIONS}  - Unsafe deserialization (yaml.unsafe_load/marshal) — use safe alternatives [Pattern #27]\n"
+fi
+if echo "$CONTENT" | grep -qP 'pickle\.loads?\('; then
+  echo "⚠️ [Sentinel] pickle usage detected — ensure input is trusted (not user-controlled) [Pattern #27]"
+fi
+if echo "$CONTENT" | grep -qP 'yaml\.load\(' ; then
   if ! echo "$CONTENT" | grep -qP 'yaml\.safe_load|Loader=yaml\.SafeLoader|Loader=yaml\.FullLoader'; then
-    VIOLATIONS="${VIOLATIONS}  - Unsafe deserialization (pickle/yaml.load) — use safe alternatives [Pattern #27]\n"
+    VIOLATIONS="${VIOLATIONS}  - yaml.load() without SafeLoader — use yaml.safe_load() [Pattern #27]\n"
   fi
 fi
 

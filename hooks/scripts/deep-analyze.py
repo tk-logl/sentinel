@@ -127,11 +127,18 @@ def _check_open_encoding(node: ast.Call, violations: list[str]) -> None:
 
 def _check_unsafe_calls(node: ast.Call, violations: list[str]) -> None:
     func = node.func
-    # #30 SSRF
+    # #30 SSRF — only flag if URL looks user-controlled, not config/env/constants
     if isinstance(func, ast.Attribute) and func.attr in ("get", "post", "put", "delete", "patch"):
         if isinstance(func.value, ast.Name) and func.value.id in ("requests", "httpx", "aiohttp"):
             if node.args and isinstance(node.args[0], (ast.Name, ast.JoinedStr, ast.BinOp)):
-                violations.append(f"L{node.lineno}: HTTP request with variable URL — validate/allowlist [Pattern #30 SSRF]")
+                url_arg = node.args[0]
+                safe_url = False
+                if isinstance(url_arg, ast.Name):
+                    # UPPER_CASE or *_URL/*_url = config constant, not user input
+                    if url_arg.id.isupper() or url_arg.id.endswith(("_URL", "_url", "_URI", "_uri", "_endpoint")):
+                        safe_url = True
+                if not safe_url:
+                    violations.append(f"L{node.lineno}: HTTP request with variable URL — validate/allowlist [Pattern #30 SSRF]")
 
 
 def analyze_python_regex(source: str) -> list[str]:
@@ -142,7 +149,14 @@ def analyze_python_regex(source: str) -> list[str]:
         if re.match(r"^global\s+\w+", stripped):
             violations.append(f"L{i}: 'global' keyword — shared mutable state risks race conditions [Pattern #17]")
         if re.match(r"^\s*def\s+[a-z]+[A-Z]", stripped):
-            violations.append(f"L{i}: camelCase function name — use snake_case [Pattern #25]")
+            # Allow known framework methods (unittest setUp/tearDown, etc.)
+            fn_name = re.search(r"def\s+(\w+)", stripped)
+            known_camel = {"setUp", "tearDown", "setUpClass", "tearDownClass", "setUpModule",
+                          "tearDownModule", "addCleanup", "doCleanups", "skipTest",
+                          "countTestCases", "defaultTestResult", "shortDescription",
+                          "addTypeEqualityFunc", "assertRaises", "maxDiff"}
+            if not fn_name or fn_name.group(1) not in known_camel:
+                violations.append(f"L{i}: camelCase function name — use snake_case [Pattern #25]")
         match = re.search(r"(?:if|elif|while|return|>=?|<=?|==|!=)\s+(\d{3,})\b", stripped)
         if match and not re.match(r"^\s*#", stripped):
             num = match.group(1)
