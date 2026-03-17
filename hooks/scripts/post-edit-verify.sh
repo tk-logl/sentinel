@@ -69,7 +69,39 @@ if [[ "$EXT" == "py" ]]; then
   fi
 fi
 
-# 3. TypeScript/JS-specific checks
+# 3. Pattern #3: Silent Error Swallowing (all languages)
+SILENT_EXCEPT=$(grep -cP '^\s*except\s*:\s*$|except\s+\w+.*:\s*(pass|return\s*$|return\s+None|continue)\s*$' "$FILE_PATH" 2>/dev/null || true)
+[[ -z "$SILENT_EXCEPT" ]] && SILENT_EXCEPT=0
+if [[ $SILENT_EXCEPT -gt 0 ]]; then
+  WARNINGS="${WARNINGS}⚠️  ${SILENT_EXCEPT} silent error swallowing pattern(s) (except: pass/return None) [Pattern #3]\n\n"
+fi
+
+# 4. Pattern #39: Missing Logging in except blocks
+if [[ "$EXT" == "py" ]]; then
+  EXCEPT_BLOCKS=$(grep -cP '^\s*except\s' "$FILE_PATH" 2>/dev/null || true)
+  [[ -z "$EXCEPT_BLOCKS" ]] && EXCEPT_BLOCKS=0
+  LOGGED_EXCEPTS=$(grep -cP '^\s*except\s.*:.*$' "$FILE_PATH" 2>/dev/null || true)
+  [[ -z "$LOGGED_EXCEPTS" ]] && LOGGED_EXCEPTS=0
+  if [[ $EXCEPT_BLOCKS -gt 0 ]]; then
+    # Check if logger is used anywhere near except blocks
+    HAS_LOGGER=$(grep -cP 'logger\.(error|warning|exception|critical|info)' "$FILE_PATH" 2>/dev/null || true)
+    [[ -z "$HAS_LOGGER" ]] && HAS_LOGGER=0
+    if [[ $EXCEPT_BLOCKS -gt 0 && $HAS_LOGGER -eq 0 ]]; then
+      WARNINGS="${WARNINGS}⚠️  ${EXCEPT_BLOCKS} except block(s) but no logger usage — add logging [Pattern #39]\n\n"
+    fi
+  fi
+fi
+
+# 5. Pattern #33: Timezone Bug — datetime.now() without tz
+if [[ "$EXT" == "py" ]]; then
+  NAIVE_DT=$(grep -cP 'datetime\.now\(\s*\)|datetime\.utcnow\(\)' "$FILE_PATH" 2>/dev/null || true)
+  [[ -z "$NAIVE_DT" ]] && NAIVE_DT=0
+  if [[ $NAIVE_DT -gt 0 ]]; then
+    WARNINGS="${WARNINGS}⚠️  ${NAIVE_DT} naive datetime usage (datetime.now()) — use datetime.now(tz=UTC) or timezone.now() [Pattern #33]\n\n"
+  fi
+fi
+
+# 6. TypeScript/JS-specific checks
 if [[ "$EXT" == "ts" || "$EXT" == "tsx" || "$EXT" == "js" || "$EXT" == "jsx" ]]; then
   # Check for console.log
   CONSOLE_COUNT=$(grep -cP '^\s*console\.(log|debug|info)\(' "$FILE_PATH" 2>/dev/null || true)

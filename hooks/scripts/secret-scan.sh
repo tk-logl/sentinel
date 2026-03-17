@@ -67,9 +67,28 @@ if echo "$CONTENT" | grep -qP '(API_KEY|SECRET_KEY|ACCESS_TOKEN|AUTH_TOKEN|PRIVA
   fi
 fi
 
+# JWT tokens (eyJ prefix = base64 of {"alg":...)
+if echo "$CONTENT" | grep -qP 'eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}'; then
+  if ! echo "$CONTENT" | grep -qP '(test|fake|mock|example|sample).*eyJ|eyJ.*(test|fake|mock)'; then
+    VIOLATIONS="${VIOLATIONS}  - JWT token embedded in source code\n"
+  fi
+fi
+
+# Google API keys
+if echo "$CONTENT" | grep -qP 'AIza[a-zA-Z0-9_-]{35}'; then
+  VIOLATIONS="${VIOLATIONS}  - Google API key pattern (AIza...)\n"
+fi
+
 # Private keys
 if echo "$CONTENT" | grep -qP 'BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY'; then
   VIOLATIONS="${VIOLATIONS}  - Private key embedded in source code\n"
+fi
+
+# Database connection strings with passwords
+if echo "$CONTENT" | grep -qP '(postgres|mysql|mongodb|redis)://\w+:[^@]{8,}@'; then
+  if ! echo "$CONTENT" | grep -qP '(localhost|127\.0\.0\.1|example\.com|placeholder|changeme)'; then
+    VIOLATIONS="${VIOLATIONS}  - Database connection string with embedded password\n"
+  fi
 fi
 
 if [[ -n "$VIOLATIONS" ]]; then

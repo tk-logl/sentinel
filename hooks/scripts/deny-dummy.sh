@@ -79,6 +79,40 @@ if echo "$CONTENT" | grep -qP '^\s*def\s+\w+\(.*\).*:\s*$' && echo "$CONTENT" | 
   VIOLATIONS="${VIOLATIONS}  - Empty function body (return None) — implement real logic\n"
 fi
 
+# 7. Pattern #3: Silent Error Swallowing — except blocks that hide errors
+if echo "$CONTENT" | grep -qP '^\s*except\s*:\s*$|^\s*except\s+\w+\s*:\s*pass\s*$|^\s*except\s+Exception\s*(as\s+\w+)?\s*:\s*(pass|return\s*$|return\s+None|continue)'; then
+  if ! echo "$CONTENT" | grep -qP 'logger\.|logging\.|log\.'; then
+    VIOLATIONS="${VIOLATIONS}  - Silent error swallowing (except: pass/return None) — log the error, then handle it [Pattern #3]\n"
+  fi
+fi
+
+# 8. Pattern #5: Abandoned Test Code — skipped tests without reason
+if echo "$CONTENT" | grep -qP '@pytest\.mark\.skip\s*$|@pytest\.mark\.skip\(\s*\)|@unittest\.skip\s*$|@unittest\.skip\(\s*\)|\.skip\(\s*["\x27]\s*["\x27]\s*\)'; then
+  VIOLATIONS="${VIOLATIONS}  - Skipped test without reason — provide skip reason or remove [Pattern #5]\n"
+fi
+if echo "$CONTENT" | grep -qP '^\s*#\s*(def test_|class Test|it\(|describe\()'; then
+  VIOLATIONS="${VIOLATIONS}  - Commented-out test code — delete or implement, don't comment out [Pattern #5]\n"
+fi
+
+# 9. Pattern #10: Security Bypass — disabling SSL/verification
+if echo "$CONTENT" | grep -qP 'verify\s*=\s*False|ssl\s*=\s*False|check_hostname\s*=\s*False|VERIFY_SSL\s*=\s*False'; then
+  VIOLATIONS="${VIOLATIONS}  - SSL/TLS verification disabled (verify=False) — never disable in production [Pattern #10]\n"
+fi
+
+# 10. Pattern #27: Unsafe Deserialization
+if echo "$CONTENT" | grep -qP 'pickle\.loads?\(|yaml\.load\([^)]*(?!Loader)|yaml\.unsafe_load|marshal\.loads?\(|shelve\.open'; then
+  if ! echo "$CONTENT" | grep -qP 'yaml\.safe_load|Loader=yaml\.SafeLoader|Loader=yaml\.FullLoader'; then
+    VIOLATIONS="${VIOLATIONS}  - Unsafe deserialization (pickle/yaml.load) — use safe alternatives [Pattern #27]\n"
+  fi
+fi
+
+# 11. Pattern #29: Command Injection — shell=True with variables
+if echo "$CONTENT" | grep -qP 'subprocess\.\w+\(.*shell\s*=\s*True|os\.system\s*\(|os\.popen\s*\('; then
+  if echo "$CONTENT" | grep -qP 'f["\x27]|\.format\(|\%\s'; then
+    VIOLATIONS="${VIOLATIONS}  - Command injection risk (shell=True + string formatting) — use subprocess with list args [Pattern #29]\n"
+  fi
+fi
+
 if [[ -n "$VIOLATIONS" ]]; then
   echo "⛔ [Sentinel Deny-Dummy] Placeholder/stub code detected in: $(basename "$FILE_PATH")"
   echo ""

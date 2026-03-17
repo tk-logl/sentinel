@@ -51,7 +51,22 @@ if echo "$COMMAND" | grep -qP 'pip3?\s+install(?!.*--break-system-packages)(?!.*
   fi
 fi
 
-# 5. Warn on force push (not block — requires justification)
+# 5. Block --no-verify (bypassing pre-commit hooks)
+if echo "$COMMAND" | grep -qP 'git\s+(commit|push|merge)\s+.*--no-verify'; then
+  echo "⛔ [Sentinel Env-Safety] --no-verify detected — bypassing safety hooks"
+  echo "  Pre-commit hooks exist for a reason. Fix the underlying issue instead."
+  echo "  If a hook is broken, fix the hook — don't skip it."
+  exit 2
+fi
+
+# 6. Warn on sudo usage
+if echo "$COMMAND" | grep -qP '^\s*sudo\s'; then
+  echo "⚠️ [Sentinel Env-Safety] sudo detected"
+  echo "  Avoid running commands as root unless absolutely necessary."
+  echo "  Check if the operation works without sudo first."
+fi
+
+# 7. Warn on force push (not block — requires justification)
 if echo "$COMMAND" | grep -qP 'git\s+push\s+.*--force(?!-with-lease)'; then
   echo "⚠️ [Sentinel Env-Safety] git push --force detected"
   echo "  Force pushing rewrites remote history and can destroy others' work."

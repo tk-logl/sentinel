@@ -54,7 +54,8 @@ echo "{\"ts\":\"${TIMESTAMP}\",\"type\":\"${ERROR_TYPE}\",\"exit\":${EXIT_CODE},
 
 # Check for repeated failures (same error hash 3+ times)
 if [[ -f "$LOG_FILE" ]]; then
-  REPEAT_COUNT=$(grep -c "\"hash\":\"${ERROR_HASH}\"" "$LOG_FILE" 2>/dev/null || echo 0)
+  REPEAT_COUNT=$(grep -c "\"hash\":\"${ERROR_HASH}\"" "$LOG_FILE" 2>/dev/null || true)
+  [[ -z "$REPEAT_COUNT" || "$REPEAT_COUNT" == *$'\n'* ]] && REPEAT_COUNT=0
   if [[ $REPEAT_COUNT -ge 3 ]]; then
     echo "⚠️ [Sentinel Error-Logger] Same error repeated ${REPEAT_COUNT}x (${ERROR_TYPE})"
     echo "  Pattern: ${COMMAND_SHORT}"
