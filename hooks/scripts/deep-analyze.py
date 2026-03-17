@@ -168,6 +168,10 @@ def analyze_python_regex(source: str) -> list[str]:
         if re.search(r"tempfile\.(mktemp|mkdtemp|NamedTemporaryFile)\(", stripped):
             if "delete=True" not in stripped and "with " not in stripped:
                 violations.append(f"L{i}: Temp file without cleanup — use with or delete= [Pattern #43]")
+        # #29 Command Injection: shell=True with string formatting
+        if re.search(r"subprocess\.\w+\(.*shell\s*=\s*True", stripped):
+            if re.search(r'f["\'\']|\.format\(|%\s', stripped):
+                violations.append(f"L{i}: shell=True + string formatting — use subprocess with list args [Pattern #29]")
     return violations
 
 

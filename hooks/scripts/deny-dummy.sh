@@ -79,13 +79,8 @@ if echo "$CONTENT" | grep -qP '^\s*def\s+\w+\(.*\).*:\s*$' && echo "$CONTENT" | 
   VIOLATIONS="${VIOLATIONS}  - Empty function body (return None) — implement real logic\n"
 fi
 
-# 7. Pattern #3: Silent Error Swallowing — except blocks that hide errors
-# Allow in: __del__, cleanup/teardown, finally, retry loops with explicit continue
-if echo "$CONTENT" | grep -qP '^\s*except\s*:\s*$|^\s*except\s+\w+\s*:\s*pass\s*$|^\s*except\s+Exception\s*(as\s+\w+)?\s*:\s*(pass|return\s*$|return\s+None)\s*$'; then
-  if ! echo "$CONTENT" | grep -qP 'logger\.|logging\.|log\.|def __del__|def teardown|def tearDown|def cleanup|finally\s*:'; then
-    VIOLATIONS="${VIOLATIONS}  - Silent error swallowing (except: pass/return None) — log the error, then handle it [Pattern #3]\n"
-  fi
-fi
+# 7. Pattern #3: Silent Error Swallowing — moved to post-edit-verify (WARNING)
+# except:pass has legitimate uses (cleanup, __del__, retry). Don't block, just warn.
 
 # 8. Pattern #5: Abandoned Test Code — skipped tests without reason
 if echo "$CONTENT" | grep -qP '@pytest\.mark\.skip\s*$|@pytest\.mark\.skip\(\s*\)|@unittest\.skip\s*$|@unittest\.skip\(\s*\)|\.skip\(\s*["\x27]\s*["\x27]\s*\)'; then
@@ -115,24 +110,14 @@ if echo "$CONTENT" | grep -qP 'yaml\.load\(' ; then
   fi
 fi
 
-# 11. Pattern #29: Command Injection — shell=True with variables
-if echo "$CONTENT" | grep -qP 'subprocess\.\w+\(.*shell\s*=\s*True|os\.system\s*\(|os\.popen\s*\('; then
-  if echo "$CONTENT" | grep -qP 'f["\x27]|\.format\(|\%\s'; then
-    VIOLATIONS="${VIOLATIONS}  - Command injection risk (shell=True + string formatting) — use subprocess with list args [Pattern #29]\n"
-  fi
+# 11. Pattern #29: Command Injection — moved to post-edit-verify (WARNING)
+# shell=True has legitimate uses (pipes, globbing). Warn, don't block.
+if echo "$CONTENT" | grep -qP 'os\.system\s*\(|os\.popen\s*\('; then
+  VIOLATIONS="${VIOLATIONS}  - os.system()/os.popen() — use subprocess.run() instead [Pattern #29]\n"
 fi
 
-# 12. Deep AST analysis (Python/TS/Go patterns grep can't catch)
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-if [[ -f "${SCRIPT_DIR}/deep-analyze.py" ]]; then
-  DEEP_RESULTS=$(echo "$CONTENT" | python3 "${SCRIPT_DIR}/deep-analyze.py" --mode pre --ext "$EXT" 2>/dev/null | head -10)
-  if [[ -n "$DEEP_RESULTS" ]]; then
-    while IFS= read -r line; do
-      [[ -z "$line" ]] && continue
-      VIOLATIONS="${VIOLATIONS}  - ${line}\n"
-    done <<< "$DEEP_RESULTS"
-  fi
-fi
+# Deep AST analysis is handled by post-edit-verify.sh (WARNING only).
+# deny-dummy.sh only blocks patterns that are ALWAYS wrong — no legitimate use case.
 
 if [[ -n "$VIOLATIONS" ]]; then
   echo "⛔ [Sentinel Deny-Dummy] Placeholder/stub code detected in: $(basename "$FILE_PATH")"
