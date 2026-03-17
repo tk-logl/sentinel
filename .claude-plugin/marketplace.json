@@ -1,0 +1,28 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "sentinel",
+  "description": "Universal AI code quality enforcement — prevents 47 common AI mistakes",
+  "owner": {
+    "name": "tk-logl"
+  },
+  "plugins": [
+    {
+      "name": "sentinel",
+      "description": "Universal AI code quality enforcement — prevents 47 common AI mistakes, enforces surgical edits, blocks dummy code, manages context memory",
+      "version": "1.0.0",
+      "author": {
+        "name": "tk-logl"
+      },
+      "source": "./",
+      "category": "productivity",
+      "homepage": "https://github.com/tk-logl/sentinel",
+      "tags": [
+        "code-quality",
+        "enforcement",
+        "ai-mistakes",
+        "surgical-edits"
+      ]
+    }
+  ],
+  "version": "1.0.0"
+}
