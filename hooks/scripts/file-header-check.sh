@@ -3,6 +3,11 @@
 # Checks that key files (200+ lines) have descriptive headers.
 # Exit 0 = ALLOW (warning only)
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "${SCRIPT_DIR}/_common.sh"
+sentinel_require_jq "file-header-check"
+sentinel_require_pcre "file-header-check"
+
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
 

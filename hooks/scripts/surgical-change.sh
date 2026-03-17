@@ -3,6 +3,11 @@
 # Enforces minimal diffs. Warns on large edits, blocks risky deletions.
 # Exit 0 = ALLOW (with warning) | Exit 2 = DENY (confirmed risk)
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "${SCRIPT_DIR}/_common.sh"
+sentinel_require_jq "surgical-change"
+sentinel_require_pcre "surgical-change"
+
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
 

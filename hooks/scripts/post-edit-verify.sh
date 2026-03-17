@@ -3,6 +3,11 @@
 # Scans edited files for quality issues after edits complete.
 # Exit 0 = ALLOW (warnings only, never blocks)
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "${SCRIPT_DIR}/_common.sh"
+sentinel_require_jq "post-edit-verify"
+sentinel_require_pcre "post-edit-verify"
+
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
 

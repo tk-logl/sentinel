@@ -3,6 +3,10 @@
 # Injects environment status and previous session state on startup.
 # Exit 0 = ALLOW (context only)
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "${SCRIPT_DIR}/_common.sh"
+# jq is optional here — graceful fallback if missing
+
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 
 echo "=== Sentinel Session Init ==="
@@ -62,11 +66,60 @@ if [[ -n "$PROJECT_ROOT" ]]; then
     echo "$DIRTY" | sed 's/^/  /'
     echo ""
   fi
+
+  # 7. OMC (oh-my-claudecode) integration — detect and inject OMC state
+  if [[ -d "${PROJECT_ROOT}/.omc" ]]; then
+    echo "=== OMC Integration Detected ==="
+
+    # Notepad priority section (session memory)
+    if [[ -f "${PROJECT_ROOT}/.omc/notepad.md" ]]; then
+      PRIORITY=$(sed -n '/^## Priority/,/^## /p' "${PROJECT_ROOT}/.omc/notepad.md" 2>/dev/null | head -10)
+      if [[ -n "$PRIORITY" ]]; then
+        echo "OMC Notepad (priority):"
+        echo "$PRIORITY" | sed 's/^/  /'
+        echo ""
+      fi
+    fi
+
+    # OMC compaction state (latest)
+    if [[ -f "${PROJECT_ROOT}/.omc/compactions/latest.md" ]]; then
+      echo "OMC compaction state available at .omc/compactions/latest.md"
+    fi
+
+    # Active OMC mode detection
+    for MODE_FILE in "${PROJECT_ROOT}"/.omc/state/*-state.json; do
+      [[ -f "$MODE_FILE" ]] || continue
+      if [[ "$SENTINEL_NO_JQ" == "0" ]]; then
+        IS_ACTIVE=$(jq -r '.active // false' "$MODE_FILE" 2>/dev/null)
+        MODE_NAME=$(basename "$MODE_FILE" | sed 's/-state\.json//')
+        if [[ "$IS_ACTIVE" == "true" ]]; then
+          echo "  OMC mode active: ${MODE_NAME}"
+        fi
+      fi
+    done
+    echo ""
+  fi
+fi
+
+# Platform compatibility status
+COMPAT_ISSUES=""
+if [[ "$SENTINEL_NO_PCRE" == "1" ]]; then
+  COMPAT_ISSUES="${COMPAT_ISSUES}  ⚠️ No PCRE grep — pattern detection disabled (brew install grep on macOS)\n"
+fi
+if [[ "$SENTINEL_NO_JQ" == "1" ]]; then
+  COMPAT_ISSUES="${COMPAT_ISSUES}  ⚠️ No jq — JSON parsing disabled (apt/brew install jq)\n"
+fi
+if [[ -n "$COMPAT_ISSUES" ]]; then
+  echo "=== Platform Compatibility ==="
+  echo -e "$COMPAT_ISSUES"
 fi
 
 echo "=== Sentinel Active ==="
 echo "Enforcement: pre-edit-gate, deny-dummy, surgical-change, scope-guard,"
 echo "             secret-scan, env-safety, error-logger, post-edit-verify"
+if [[ "$SENTINEL_NO_PCRE" == "1" || "$SENTINEL_NO_JQ" == "1" ]]; then
+  echo "  (some hooks degraded — see Platform Compatibility above)"
+fi
 echo ""
 
 exit 0

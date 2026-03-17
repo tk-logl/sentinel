@@ -3,6 +3,10 @@
 # Performs thorough incomplete-work detection when AI stops generating.
 # Exit 0 = ALLOW (Stop hooks cannot block, but warnings are loud)
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "${SCRIPT_DIR}/_common.sh"
+sentinel_require_pcre "completion-check"
+
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 [[ -z "$PROJECT_ROOT" ]] && exit 0
 

@@ -2,6 +2,11 @@
 # Sentinel PreToolUse Hook: Environment Safety (BLOCKING)
 # Blocks dangerous system commands. Exit 2 = DENY | Exit 0 = ALLOW
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "${SCRIPT_DIR}/_common.sh"
+sentinel_require_jq "env-safety"
+sentinel_require_pcre "env-safety"
+
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
 

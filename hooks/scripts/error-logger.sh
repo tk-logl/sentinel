@@ -3,6 +3,11 @@
 # Classifies and logs Bash errors. Detects repeated failures.
 # Exit 0 = ALLOW (always, just logs)
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "${SCRIPT_DIR}/_common.sh"
+sentinel_require_jq "error-logger"
+sentinel_require_pcre "error-logger"
+
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
 

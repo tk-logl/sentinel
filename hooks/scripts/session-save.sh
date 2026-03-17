@@ -3,6 +3,10 @@
 # Saves state on session end (/clear, exit). Same logic as state-preserve.
 # Exit 0 = ALLOW (always)
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "${SCRIPT_DIR}/_common.sh"
+# jq is optional — graceful fallback if missing
+
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 [[ -z "$PROJECT_ROOT" ]] && exit 0
 

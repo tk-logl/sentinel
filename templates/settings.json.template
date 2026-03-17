@@ -1,0 +1,36 @@
+{
+  "$schema": "https://anthropic.com/claude-code/settings.schema.json",
+  "deny": [
+    "Bash(git push origin main)",
+    "Bash(git push origin develop)",
+    "Bash(git push --force)",
+    "Bash(git reset --hard)",
+    "Bash(git clean -fd)",
+    "Bash(rm -rf /)",
+    "Bash(rm -rf ~)",
+    "Bash(DROP DATABASE)",
+    "Bash(DROP TABLE)",
+    "Read(.env.local)",
+    "Write(.env.local)",
+    "Edit(.env.local)",
+    "Read(.env)",
+    "Write(.env)",
+    "Edit(.env)"
+  ],
+  "permissions": {
+    "allow": [
+      "Bash(python3 *)",
+      "Bash(pytest *)",
+      "Bash(ruff *)",
+      "Bash(mypy *)",
+      "Bash(git status*)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Read(*)",
+      "Glob(*)",
+      "Grep(*)"
+    ]
+  }
+}
