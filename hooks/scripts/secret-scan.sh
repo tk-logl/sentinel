@@ -37,7 +37,7 @@ fi
 VIOLATIONS=""
 
 # OpenAI / Stripe secret keys
-if echo "$CONTENT" | grep -qP 'sk-[a-zA-Z0-9]{20,}'; then
+if echo "$CONTENT" | grep -qP 'sk-[a-zA-Z0-9-]{20,}'; then
   # Exclude obvious fake keys
   if ! echo "$CONTENT" | grep -qP 'sk-(test|fake|dummy|example|placeholder|xxx)'; then
     VIOLATIONS="${VIOLATIONS}  - OpenAI/Stripe secret key pattern (sk-...)\n"

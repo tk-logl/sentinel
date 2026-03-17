@@ -28,7 +28,7 @@ fi
 WARNINGS=""
 
 # 1. Check for remaining stubs
-STUB_COUNT=$(grep -cP '^\s+pass\s*$|raise NotImplementedError|# TODO|# FIXME|# HACK|# PLACEHOLDER' "$FILE_PATH" 2>/dev/null || echo 0)
+STUB_COUNT=$(grep -cP '^\s+pass\s*$|raise NotImplementedError|# TODO|# FIXME|# HACK|# PLACEHOLDER' "$FILE_PATH" 2>/dev/null || true)
 if [[ $STUB_COUNT -gt 0 ]]; then
   STUB_LINES=$(grep -nP '^\s+pass\s*$|raise NotImplementedError|# TODO|# FIXME|# HACK|# PLACEHOLDER' "$FILE_PATH" | head -5)
   WARNINGS="${WARNINGS}⚠️  ${STUB_COUNT} stub/placeholder(s) remain:\n"
@@ -50,8 +50,8 @@ if [[ "$EXT" == "py" ]]; then
   fi
 
   # Check for functions missing type hints
-  UNTYPED=$(grep -cP '^\s*def\s+\w+\([^)]*\)\s*:' "$FILE_PATH" 2>/dev/null || echo 0)
-  TYPED=$(grep -cP '^\s*def\s+\w+\([^)]*\)\s*->' "$FILE_PATH" 2>/dev/null || echo 0)
+  UNTYPED=$(grep -cP '^\s*def\s+\w+\([^)]*\)\s*:' "$FILE_PATH" 2>/dev/null || true)
+  TYPED=$(grep -cP '^\s*def\s+\w+\([^)]*\)\s*->' "$FILE_PATH" 2>/dev/null || true)
   MISSING_HINTS=$((UNTYPED - TYPED))
   if [[ $MISSING_HINTS -gt 0 ]]; then
     WARNINGS="${WARNINGS}⚠️  ${MISSING_HINTS} function(s) missing return type hints (def fn() -> ReturnType:)\n\n"
@@ -63,7 +63,7 @@ if [[ "$EXT" == "py" ]]; then
   fi
 
   # Check for print() in non-test code
-  PRINT_COUNT=$(grep -cP '^\s*print\(' "$FILE_PATH" 2>/dev/null || echo 0)
+  PRINT_COUNT=$(grep -cP '^\s*print\(' "$FILE_PATH" 2>/dev/null || true)
   if [[ $PRINT_COUNT -gt 0 ]]; then
     WARNINGS="${WARNINGS}⚠️  ${PRINT_COUNT} print() call(s) — use logging module instead\n\n"
   fi
@@ -72,13 +72,13 @@ fi
 # 3. TypeScript/JS-specific checks
 if [[ "$EXT" == "ts" || "$EXT" == "tsx" || "$EXT" == "js" || "$EXT" == "jsx" ]]; then
   # Check for console.log
-  CONSOLE_COUNT=$(grep -cP '^\s*console\.(log|debug|info)\(' "$FILE_PATH" 2>/dev/null || echo 0)
+  CONSOLE_COUNT=$(grep -cP '^\s*console\.(log|debug|info)\(' "$FILE_PATH" 2>/dev/null || true)
   if [[ $CONSOLE_COUNT -gt 0 ]]; then
     WARNINGS="${WARNINGS}⚠️  ${CONSOLE_COUNT} console.log() call(s) — remove or use proper logger\n\n"
   fi
 
   # Check for 'any' type
-  ANY_COUNT=$(grep -cP ':\s*any\b' "$FILE_PATH" 2>/dev/null || echo 0)
+  ANY_COUNT=$(grep -cP ':\s*any\b' "$FILE_PATH" 2>/dev/null || true)
   if [[ $ANY_COUNT -gt 0 ]]; then
     WARNINGS="${WARNINGS}⚠️  ${ANY_COUNT} 'any' type usage(s) — use specific types\n\n"
   fi
