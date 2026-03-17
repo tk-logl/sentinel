@@ -57,21 +57,33 @@ OUTPUT_SHORT=$(echo "$OUTPUT" | head -3 | tr '\n' ' ' | cut -c1-200)
 # Write to log
 echo "{\"ts\":\"${TIMESTAMP}\",\"type\":\"${ERROR_TYPE}\",\"exit\":${EXIT_CODE},\"hash\":\"${ERROR_HASH}\",\"cmd\":\"${COMMAND_SHORT}\",\"output\":\"${OUTPUT_SHORT}\"}" >> "$LOG_FILE"
 
+# === MANDATORY ERROR RESPONSE — injected on EVERY error ===
+echo "🚨 [Sentinel Error-Logger] Command failed (${ERROR_TYPE}, exit ${EXIT_CODE})"
+echo "  Command: ${COMMAND_SHORT}"
+echo "  Output: ${OUTPUT_SHORT}"
+echo ""
+echo "  ⛔ DO NOT SKIP THIS ERROR. DO NOT MOVE ON."
+echo "  You MUST either:"
+echo "    1. Fix the error and retry the same command"
+echo "    2. Try a different approach that solves the same problem"
+echo "    3. If truly unrelated to your task, explain WHY before continuing"
+echo "  Skipping errors is AI Mistake #12 (Abandoning Failed Path)."
+echo ""
+
 # Check for repeated failures (same error hash 3+ times)
 if [[ -f "$LOG_FILE" ]]; then
   REPEAT_COUNT=$(grep -c "\"hash\":\"${ERROR_HASH}\"" "$LOG_FILE" 2>/dev/null || true)
   [[ -z "$REPEAT_COUNT" || "$REPEAT_COUNT" == *$'\n'* ]] && REPEAT_COUNT=0
   if [[ $REPEAT_COUNT -ge 3 ]]; then
-    echo "⚠️ [Sentinel Error-Logger] Same error repeated ${REPEAT_COUNT}x (${ERROR_TYPE})"
-    echo "  Pattern: ${COMMAND_SHORT}"
+    echo "🔴 [Sentinel] SAME ERROR ${REPEAT_COUNT}x — STOP REPEATING"
+    echo "  AI Mistake #12: You are repeating the exact same failed approach."
+    echo "  The definition of insanity: doing the same thing expecting different results."
+    echo "  MANDATORY: Try a completely different approach NOW."
+    echo "    - Read the error message word by word"
+    echo "    - Search for the error in docs/source code"
+    echo "    - Ask the user for help"
+    echo "    - Do NOT retry the same command"
     echo ""
-    echo "  AI Mistake #12: Repeating Failed Approach"
-    echo "  You're trying the same thing that already failed ${REPEAT_COUNT} times."
-    echo "  STOP. Try a different approach:"
-    echo "    1. Read the error message carefully"
-    echo "    2. Check documentation or source code"
-    echo "    3. Try an alternative solution"
-    echo "    4. Ask the user for guidance"
   fi
 fi
 
