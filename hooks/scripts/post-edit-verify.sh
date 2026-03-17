@@ -116,6 +116,21 @@ if [[ "$EXT" == "ts" || "$EXT" == "tsx" || "$EXT" == "js" || "$EXT" == "jsx" ]];
   fi
 fi
 
+# 7. Deep AST analysis on full file (patterns grep can't catch)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [[ -f "${SCRIPT_DIR}/deep-analyze.py" ]]; then
+  DEEP_RESULTS=$(python3 "${SCRIPT_DIR}/deep-analyze.py" --mode post --file "$FILE_PATH" 2>/dev/null | head -15)
+  if [[ -n "$DEEP_RESULTS" ]]; then
+    DEEP_COUNT=$(echo "$DEEP_RESULTS" | wc -l)
+    WARNINGS="${WARNINGS}⚠️  ${DEEP_COUNT} deep pattern issue(s):\n"
+    while IFS= read -r line; do
+      [[ -z "$line" ]] && continue
+      WARNINGS="${WARNINGS}  ${line}\n"
+    done <<< "$DEEP_RESULTS"
+    WARNINGS="${WARNINGS}\n"
+  fi
+fi
+
 if [[ -n "$WARNINGS" ]]; then
   echo "🔍 [Sentinel Post-Edit Verify] $(basename "$FILE_PATH")"
   echo ""

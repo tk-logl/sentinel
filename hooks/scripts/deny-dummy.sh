@@ -113,6 +113,18 @@ if echo "$CONTENT" | grep -qP 'subprocess\.\w+\(.*shell\s*=\s*True|os\.system\s*
   fi
 fi
 
+# 12. Deep AST analysis (Python/TS/Go patterns grep can't catch)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [[ -f "${SCRIPT_DIR}/deep-analyze.py" ]]; then
+  DEEP_RESULTS=$(echo "$CONTENT" | python3 "${SCRIPT_DIR}/deep-analyze.py" --mode pre --ext "$EXT" 2>/dev/null | head -10)
+  if [[ -n "$DEEP_RESULTS" ]]; then
+    while IFS= read -r line; do
+      [[ -z "$line" ]] && continue
+      VIOLATIONS="${VIOLATIONS}  - ${line}\n"
+    done <<< "$DEEP_RESULTS"
+  fi
+fi
+
 if [[ -n "$VIOLATIONS" ]]; then
   echo "⛔ [Sentinel Deny-Dummy] Placeholder/stub code detected in: $(basename "$FILE_PATH")"
   echo ""
