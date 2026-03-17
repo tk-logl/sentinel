@@ -103,6 +103,36 @@ if [[ -n "$CHANGED_FILES" ]]; then
   done <<< "$CHANGED_FILES"
 fi
 
+# 7. Unresolved errors in session [Pattern #12]
+LOG_FILE="${PROJECT_ROOT}/.sentinel/error-log.jsonl"
+if [[ -f "$LOG_FILE" ]]; then
+  TOTAL_ERRORS=$(wc -l < "$LOG_FILE" 2>/dev/null || true)
+  [[ -z "$TOTAL_ERRORS" ]] && TOTAL_ERRORS=0
+  if [[ $TOTAL_ERRORS -ge 3 ]]; then
+    LAST_ERROR=$(tail -1 "$LOG_FILE" 2>/dev/null | jq -r '"  \(.type): \(.cmd)"' 2>/dev/null)
+    CRITICAL="${CRITICAL}🔴 ${TOTAL_ERRORS} errors logged this session — were they ALL resolved?\n"
+    CRITICAL="${CRITICAL}  Last: ${LAST_ERROR}\n"
+    CRITICAL="${CRITICAL}  If any error was skipped without fixing, you are NOT done.\n\n"
+  fi
+fi
+
+# 8. Shell implementations — functions that return empty/hardcoded values
+if [[ -n "$CHANGED_FILES" ]]; then
+  SHELL_FOUND=""
+  while IFS= read -r file; do
+    [[ -z "$file" || ! -f "$PROJECT_ROOT/$file" ]] && continue
+    [[ "$file" == *.py ]] || continue
+    # Functions that just return "", {}, [], 0, False — likely shell implementations
+    SHELLS=$(grep -nP '^\s+return\s+(""|{}|\[\]|0|False|None|\{\})\s*$' "$PROJECT_ROOT/$file" 2>/dev/null | head -3)
+    if [[ -n "$SHELLS" ]]; then
+      SHELL_FOUND="${SHELL_FOUND}  ${file}: $(echo "$SHELLS" | head -1)\n"
+    fi
+  done <<< "$CHANGED_FILES"
+  if [[ -n "$SHELL_FOUND" ]]; then
+    WARNINGS="${WARNINGS}⚠️  Possible shell/facade implementations (return empty values):\n${SHELL_FOUND}\n"
+  fi
+fi
+
 # Output
 if [[ -n "$CRITICAL" || -n "$WARNINGS" ]]; then
   echo "🛑 [Sentinel Completion Check] — STOP. Review before claiming done."
@@ -116,13 +146,25 @@ if [[ -n "$CRITICAL" || -n "$WARNINGS" ]]; then
     echo -e "$WARNINGS"
   fi
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "Before claiming completion:"
-  echo "  1. ALL source changes committed"
-  echo "  2. Tests actually RUN and PASSED (not 'should pass')"
-  echo "  3. verify_command executed with evidence"
-  echo "  4. No TODO/stub code in your changes"
-  echo "  5. No repeated errors unresolved"
-  echo "  6. If anything above is red — YOU ARE NOT DONE."
+  echo "ANTI-FRAUD CHECKLIST — answer ALL before saying 'done':"
+  echo "  1. ALL source changes committed? (not 'will commit later')"
+  echo "  2. Tests actually RUN and PASSED? (show the output, not 'should pass')"
+  echo "  3. verify_command executed? (paste the result)"
+  echo "  4. No TODO/stub/placeholder in your changes?"
+  echo "  5. No errors skipped or unresolved?"
+  echo "  6. Implementation is REAL logic, not empty returns/facades?"
+  echo ""
+  echo "  If you cannot prove ALL of these — DO NOT claim completion."
+  echo "  Instead, REPORT to the user: what's done, what's not, what's blocked."
+  echo "  Honest partial progress > dishonest 'done' claim."
+fi
+
+# Always output (even when no issues found) — prevent silent completion
+if [[ -z "$CRITICAL" && -z "$WARNINGS" ]]; then
+  echo "✅ [Sentinel Completion Check] No issues detected."
+  echo "  Reminder: 'no issues detected' means no AUTOMATED issues."
+  echo "  You must still verify: does the implementation actually WORK?"
+  echo "  Evidence required: test output, command result, or user confirmation."
 fi
 
 exit 0

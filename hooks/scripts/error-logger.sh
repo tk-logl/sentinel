@@ -64,27 +64,46 @@ echo "  Output: ${OUTPUT_SHORT}"
 echo ""
 echo "  ⛔ DO NOT SKIP THIS ERROR. DO NOT MOVE ON."
 echo "  You MUST either:"
-echo "    1. Fix the error and retry the same command"
-echo "    2. Try a different approach that solves the same problem"
-echo "    3. If truly unrelated to your task, explain WHY before continuing"
-echo "  Skipping errors is AI Mistake #12 (Abandoning Failed Path)."
+echo "    1. Fix the root cause and retry"
+echo "    2. Try a completely different approach"
+echo "    3. If you CANNOT fix it — TELL THE USER. Do not hide failures."
+echo "  NEVER claim 'done' or 'fixed' when errors remain unresolved."
 echo ""
 
+# Session error count (total errors in current log)
+TOTAL_ERRORS=0
+if [[ -f "$LOG_FILE" ]]; then
+  TOTAL_ERRORS=$(wc -l < "$LOG_FILE" 2>/dev/null || true)
+  [[ -z "$TOTAL_ERRORS" ]] && TOTAL_ERRORS=0
+fi
+
 # Check for repeated failures (same error hash 3+ times)
+REPEAT_COUNT=0
 if [[ -f "$LOG_FILE" ]]; then
   REPEAT_COUNT=$(grep -c "\"hash\":\"${ERROR_HASH}\"" "$LOG_FILE" 2>/dev/null || true)
   [[ -z "$REPEAT_COUNT" || "$REPEAT_COUNT" == *$'\n'* ]] && REPEAT_COUNT=0
-  if [[ $REPEAT_COUNT -ge 3 ]]; then
-    echo "🔴 [Sentinel] SAME ERROR ${REPEAT_COUNT}x — STOP REPEATING"
-    echo "  AI Mistake #12: You are repeating the exact same failed approach."
-    echo "  The definition of insanity: doing the same thing expecting different results."
-    echo "  MANDATORY: Try a completely different approach NOW."
-    echo "    - Read the error message word by word"
-    echo "    - Search for the error in docs/source code"
-    echo "    - Ask the user for help"
-    echo "    - Do NOT retry the same command"
-    echo ""
-  fi
+fi
+
+if [[ $REPEAT_COUNT -ge 3 ]]; then
+  echo "🔴 [Sentinel] SAME ERROR ${REPEAT_COUNT}x — YOU ARE STUCK"
+  echo "  You are repeating the exact same failed approach."
+  echo "  STOP. You clearly cannot solve this alone."
+  echo "  ➜ REPORT TO USER: explain what you tried, what failed, and ask for guidance."
+  echo "  Do NOT try again. Do NOT skip it. Do NOT pretend it's fixed."
+  echo ""
+fi
+
+# 5+ total errors in session — you need help
+if [[ $TOTAL_ERRORS -ge 5 ]]; then
+  echo "🆘 [Sentinel] ${TOTAL_ERRORS} errors this session — ASK THE USER FOR HELP"
+  echo "  You have accumulated ${TOTAL_ERRORS} errors. This suggests you are struggling."
+  echo "  MANDATORY: Tell the user:"
+  echo "    - What you were trying to do"
+  echo "    - What errors you hit (summarize)"
+  echo "    - What approaches you already tried"
+  echo "    - Ask for direction before continuing"
+  echo "  Continuing silently after this many errors is dishonest."
+  echo ""
 fi
 
 # Keep log file from growing too large (max 500 entries)
