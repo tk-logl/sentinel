@@ -35,7 +35,7 @@ if echo "$COMMAND" | grep -qP '(?<!\w)python(?!3)\s' ; then
 fi
 
 # 3. Block dangerous rm commands
-if echo "$COMMAND" | grep -qP 'rm\s+(-rf|-fr|--recursive)\s+(/|~/|\./|\.\.|/home|/etc|/var|/usr)\b'; then
+if echo "$COMMAND" | grep -qP 'rm\s+(-rf|-fr|--recursive)\s+(/\s*$|/\s+|~/|\./?\.\.|\./\s|/home|/etc|/var|/usr)'; then
   echo "⛔ [Sentinel Env-Safety] Dangerous rm command blocked"
   echo "  Target: $(echo "$COMMAND" | grep -oP 'rm\s+\S+\s+\S+')"
   echo "  Never delete root, home, or system directories."
