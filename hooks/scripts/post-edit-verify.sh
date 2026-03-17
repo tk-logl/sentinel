@@ -122,7 +122,6 @@ if [[ "$EXT" == "ts" || "$EXT" == "tsx" || "$EXT" == "js" || "$EXT" == "jsx" ]];
 fi
 
 # 7. Deep AST analysis on full file (patterns grep can't catch)
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if [[ -f "${SCRIPT_DIR}/deep-analyze.py" ]]; then
   DEEP_RESULTS=$(python3 "${SCRIPT_DIR}/deep-analyze.py" --mode post --file "$FILE_PATH" 2>/dev/null | head -15)
   if [[ -n "$DEEP_RESULTS" ]]; then

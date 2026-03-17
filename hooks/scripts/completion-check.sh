@@ -5,6 +5,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/_common.sh"
+sentinel_require_jq "completion-check"
 sentinel_require_pcre "completion-check"
 
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)

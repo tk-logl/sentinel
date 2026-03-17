@@ -79,7 +79,7 @@ if echo "$COMMAND" | grep -qP 'git\s+push\s+.*--force(?!-with-lease)'; then
   echo "  If you must force push, explain why in the commit message."
 fi
 
-# 6. Warn on git reset --hard
+# 8. Warn on git reset --hard
 if echo "$COMMAND" | grep -qP 'git\s+reset\s+--hard'; then
   echo "⚠️ [Sentinel Env-Safety] git reset --hard detected"
   echo "  This permanently discards uncommitted changes."
