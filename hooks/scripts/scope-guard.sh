@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/_common.sh"
 sentinel_require_jq "scope-guard"
 sentinel_require_pcre "scope-guard"
+sentinel_check_enabled "scope_guard"
 
 INPUT=$(cat)
 USER_PROMPT=$(echo "$INPUT" | jq -r '.tool_input.user_prompt // .tool_input.content // empty' 2>/dev/null)

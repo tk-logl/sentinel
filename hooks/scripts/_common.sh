@@ -58,6 +58,48 @@ sentinel_require_jq() {
   fi
 }
 
+# --- Enforcement toggle check ---
+# Reads config/sentinel.json (or .sentinel/config.json) enforcement toggles.
+# Usage: sentinel_check_enabled "hook_name"
+# If enforcement.$hook_name is false, exits 0 (skip silently).
+# If config not found or jq missing, defaults to ENABLED (safe default).
+
+sentinel_check_enabled() {
+  local hook_name="${1:-}"
+  [[ -z "$hook_name" ]] && return 0
+
+  # Skip check if jq not available — default to enabled
+  [[ "$SENTINEL_NO_JQ" == "1" ]] && return 0
+
+  # Find config: project-level first, then plugin default
+  local config_file=""
+  local project_root
+  project_root=$(git rev-parse --show-toplevel 2>/dev/null)
+
+  if [[ -n "$project_root" && -f "${project_root}/.sentinel/config.json" ]]; then
+    config_file="${project_root}/.sentinel/config.json"
+  elif [[ -n "$SENTINEL_PLUGIN_ROOT" && -f "${SENTINEL_PLUGIN_ROOT}/config/sentinel.json" ]]; then
+    config_file="${SENTINEL_PLUGIN_ROOT}/config/sentinel.json"
+  elif [[ -n "$SCRIPT_DIR" && -f "${SCRIPT_DIR}/../../config/sentinel.json" ]]; then
+    config_file="${SCRIPT_DIR}/../../config/sentinel.json"
+  fi
+
+  # No config found — default to enabled
+  [[ -z "$config_file" ]] && return 0
+
+  # Read the toggle value
+  # NOTE: jq's // operator treats false as falsy, so "false // true" returns true.
+  # Must check explicitly whether the key exists and equals false.
+  local enabled
+  enabled=$(jq -r "if .enforcement.${hook_name} == false then \"disabled\" else \"enabled\" end" "$config_file" 2>/dev/null)
+
+  if [[ "$enabled" == "disabled" ]]; then
+    exit 0
+  fi
+
+  return 0
+}
+
 # --- Utility: get script directory ---
 # Usage: source "${SCRIPT_DIR}/_common.sh"
 # The calling script should set SCRIPT_DIR before sourcing.
