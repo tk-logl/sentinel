@@ -1,165 +1,207 @@
+<div align="center">
+
 # sentinel
 
-Universal AI code quality enforcement plugin for Claude Code.
+**Universal AI code quality enforcement for Claude Code**
 
-Prevents 47 common AI coding mistakes, enforces surgical edits, blocks dummy code, scans for secrets, and manages context memory — automatically.
+Prevents 47 common AI coding mistakes. Automatically.
 
-## Quick Start
+[![CI](https://github.com/tk-logl/sentinel/actions/workflows/test.yml/badge.svg)](https://github.com/tk-logl/sentinel/actions/workflows/test.yml)
+[![ShellCheck](https://img.shields.io/badge/ShellCheck-passing-brightgreen)](https://www.shellcheck.net/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.3.0-orange)](https://github.com/tk-logl/sentinel/releases/tag/v1.3.0)
 
-```bash
-# Install (one command, any machine)
-claude plugin install github:tk-logl/sentinel
+[Install](#install) · [How It Works](#how-it-works) · [Configuration](#configuration) · [FAQ](#faq)
 
-# Initialize in your project
-/sentinel:init
+</div>
 
-# That's it. All hooks are now active.
+---
+
+## Why Sentinel?
+
+AI coding assistants make the same mistakes repeatedly: dummy code (`pass`, `TODO`), hardcoded secrets, scope reduction ("for now"), large destructive edits, and false completion claims. Sentinel catches all of these **before they reach your codebase**.
+
+```
+⛔ [Sentinel Deny-Dummy] Placeholder/stub code detected in: api.py
+
+Violations:
+  - 'pass' as standalone statement (implement the function body)
+  - TODO/FIXME/PLACEHOLDER/HACK comment (implement now, don't defer)
+
+Every function must have a real implementation. No stubs, no deferred work.
+→ Implement the actual logic, then retry.
 ```
 
-## What Happens After Install
+## Install
 
-**You don't need to do anything.** Sentinel hooks fire automatically:
+```bash
+# One command. Any machine. Takes 5 seconds.
+claude plugin install github:tk-logl/sentinel
 
-- **Write code** → dummy code blocked (pass, TODO, assert True)
-- **Hardcode a secret** → blocked (API keys, JWT, passwords)
-- **Run `brew install` on Linux** → blocked
-- **Type "for now" or "일단"** → scope reduction warning
-- **Edit a 200+ line file** → header check warning
-- **Session starts** → environment + previous state injected
-- **Session ends** → state saved for next session
-- **Context compacts** → structured 5-section state preserved
+# Initialize in your project (optional — detects your stack)
+/sentinel:init
+```
+
+That's it. All 13 hooks are now active. No configuration required.
+
+## Demo: What You'll See
+
+### Session Start
+```
+=== Sentinel Active ===
+Enforcement: pre-edit-gate, deny-dummy, surgical-change, scope-guard,
+             secret-scan, env-safety, error-logger, post-edit-verify
+```
+
+### Blocking a Hardcoded Secret
+```
+⛔ [Sentinel Secret-Scan] Hardcoded secrets detected in: config.py
+
+Found:
+  - OpenAI/Stripe secret key pattern (sk-...)
+
+Never hardcode credentials. Use:
+  Python: os.environ.get('API_KEY') or django-environ
+  Node:   process.env.API_KEY or dotenv
+→ Move secrets to environment variables, then retry.
+```
+
+### Session Quality Report (on Stop)
+```
+📊 [Sentinel] Session Quality Report
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Session: 2026-03-18T10:48:27Z
+  ✅ Checks passed: 24
+  ⛔ Blocks (prevented): 3
+  ⚠️  Warnings issued: 5
+  📈 Quality Score: 91/100 (A)
+
+  Top patterns caught:
+    dummy_code: 2x
+    large_edit: 1x
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
 
 ## How It Works
+
+Sentinel registers **13 hooks** across 7 Claude Code event types. They fire automatically — you don't call them.
 
 ### Blocking Hooks (prevents the action)
 
 | Hook | Trigger | What It Blocks |
 |------|---------|---------------|
-| `pre-edit-gate` | Before Write/Edit | Source code edits without `.sentinel/current-task.json` checklist |
-| `deny-dummy` | Before Write/Edit | `pass`, `TODO/FIXME`, `assert True`, debug prints, `NotImplementedError`, unsafe deserialization |
-| `secret-scan` | Before Write/Edit | Hardcoded API keys (sk-, ghp_, AKIA, xoxb-, AIza, eyJ...), DB passwords, private keys |
-| `env-safety` | Before Bash | `brew` on Linux, bare `python`, dangerous `rm -rf`, `--no-verify`, unsafe `pip install` |
+| `pre-edit-gate` | Before Write/Edit | Source edits without `.sentinel/current-task.json` |
+| `deny-dummy` | Before Write/Edit | `pass`, `TODO`, `assert True`, debug prints, unsafe deserialization |
+| `secret-scan` | Before Write/Edit | API keys (sk-, ghp_, AKIA, xoxb-, AIza, eyJ...), private keys, DB passwords |
+| `env-safety` | Before Bash | `brew` on Linux, bare `python`, `rm -rf /`, `--no-verify` |
 
 ### Warning Hooks (warns but allows)
 
 | Hook | Trigger | What It Warns About |
 |------|---------|-------------------|
-| `surgical-change` | Before Write/Edit | Large diffs (>15 lines), file overwrites, function deletion without grep |
-| `scope-guard` | User prompt | "for now", "simplified", "일단", "とりあえず" — scope reduction language |
-| `post-edit-verify` | After Write/Edit | Remaining stubs, missing type hints, bare except, naive datetime, silent errors |
+| `surgical-change` | Before Write/Edit | Large diffs (>15 lines), file overwrites, function deletion |
+| `scope-guard` | User prompt | "for now", "simplified", "일단", "とりあえず" |
+| `post-edit-verify` | After Write/Edit | Stubs, missing types, bare except, naive datetime |
 | `file-header-check` | After Write/Edit | Files >200 lines without descriptive headers |
-| `completion-check` | AI stops | Uncommitted changes, active tasks, unresolved errors, TODO in changed files |
+| `completion-check` | AI stops | Uncommitted changes, active tasks, TODO in changed files |
 
-### State Management Hooks
+### State Management
 
 | Hook | Trigger | What It Does |
 |------|---------|-------------|
-| `session-init` | Session start | Injects environment info, previous state, error patterns, OMC integration |
-| `state-preserve` | Before compaction | Saves 5-section structured state (intent/files/decisions/status/next) |
-| `session-save` | Session end | Saves state for next session recovery |
-| `error-logger` | After Bash | Classifies errors (syntax/import/permission/network), detects repeated failures |
+| `session-init` | Session start | Injects environment, previous state, error patterns |
+| `state-preserve` | Before compaction | Saves structured 5-section state |
+| `session-save` | Session end | Persists state for next session |
+| `error-logger` | After Bash | Classifies errors, detects repeated failures |
 
-### Deep Analysis (Python AST)
+### Deep Analysis (Python AST + Regex)
 
 `deep-analyze.py` catches patterns that grep cannot:
 
-| Pattern | Detection |
-|---------|-----------|
-| N+1 Query | `.objects.filter()` inside loops |
-| Resource Leak | `open()` without `with` context manager |
-| Encoding Bug | `open()` without `encoding=` parameter |
-| Dead Code | Unused imports via AST analysis |
-| SSRF Risk | HTTP requests with variable URLs (excludes config constants) |
-| God Object | Classes with 20+ methods, files with 500+ lines and 30+ functions |
-| Race Condition | `global` keyword usage |
-| Magic Numbers | Hardcoded numbers (excludes HTTP status codes) |
-| Naming Convention | camelCase in Python / snake_case in TypeScript |
-| Command Injection | `shell=True` with string formatting |
+**Python** (AST-based):
+- N+1 queries (`.objects.filter()` inside loops)
+- Resource leaks (`open()` without `with`)
+- Unused imports (dead code)
+- SSRF (HTTP requests with variable URLs)
+- God objects (20+ methods, 500+ lines)
+- Command injection (`shell=True` + formatting)
 
-## Usage
+**TypeScript/JavaScript** (regex-based):
+- Unused imports
+- `any` type usage
+- `==` instead of `===`
+- `var` instead of `const`/`let`
+- `eval()` usage
+- `innerHTML`/`dangerouslySetInnerHTML` (XSS)
+- Promise `.then()` without `.catch()`
+- `useEffect` without cleanup return
+- `console.log()` in source
+- `@ts-ignore` without reason
+
+**Go**: Discarded errors (`_ = err`), unclosed resources
+
+## Features
+
+### i18n (v1.3.0)
+
+Sentinel auto-detects your locale and outputs messages in your language:
+
+| Language | Example Output |
+|----------|---------------|
+| English | `Placeholder/stub code detected` |
+| 한국어 | `더미/플레이스홀더 코드 감지` |
+| 日本語 | `ダミー/プレースホルダーコード検出` |
+
+Set explicitly in `.sentinel/config.json`:
+```json
+{ "language": "ko" }
+```
+
+### Usage Statistics (v1.3.0)
+
+Every hook activation is tracked in `.sentinel/stats.json`. When the session ends, you get a quality report with:
+- Checks passed / blocks prevented / warnings issued
+- Quality score (A+ to F)
+- Top patterns detected
+
+### Agents
+
+**sentinel-reviewer** — Code review against 47 AI mistake patterns:
+```
+Use sentinel-reviewer agent to review this PR
+```
+
+**sentinel-verifier** — Evidence-based completion verification:
+```
+Use sentinel-verifier agent to verify this task is complete
+```
 
 ### Slash Commands
 
 ```
-/sentinel:init                    # Initialize .sentinel/ in your project
-/sentinel:check                   # Scan entire project against all rules
-/sentinel:header path/to/file.py  # Generate/update file header comment
+/sentinel:init                    # Initialize .sentinel/ (detects project type)
+/sentinel:check                   # Full project rule compliance scan
+/sentinel:header path/to/file.py  # Generate file header comment
 ```
 
 ### Skills (reference guides)
 
 ```
-/sentinel:ai-mistakes     # 47 AI mistake patterns — full reference
-/sentinel:checklist        # Pre-implementation checklist workflow
-/sentinel:file-headers     # File header format and generation guide
-/sentinel:memory-guard     # Context preservation strategies
+/sentinel:ai-mistakes     # 47 AI mistake patterns reference
+/sentinel:checklist       # Pre-implementation checklist workflow
+/sentinel:file-headers    # File header format guide
+/sentinel:memory-guard    # Context preservation strategies
 ```
-
-### Agents (code review & verification)
-
-**Code Review** — checks against 47 AI mistake patterns:
-```
-Use sentinel-reviewer agent to review this PR
-```
-
-**Completion Verification** — evidence-based, not "should work":
-```
-Use sentinel-verifier agent to verify CRIT-2 fix is complete
-```
-
-## Typical Workflow
-
-### Bug Fix
-```
-1. /sentinel:checklist                    # Read the checklist workflow
-2. Create .sentinel/current-task.json     # Pre-edit gate requires this
-3. Edit source code                       # Hooks auto-enforce quality
-4. /sentinel:check                        # Full project scan
-5. Use sentinel-verifier to confirm       # Evidence-based completion
-```
-
-### New Feature
-```
-1. /sentinel:init                         # If first time in this project
-2. Create .sentinel/current-task.json     # Document: why, approach, impact, blast radius
-3. Implement                              # deny-dummy blocks stubs, secret-scan blocks keys
-4. Use sentinel-reviewer for PR review    # 47-pattern automated review
-```
-
-### Quick Check
-```
-/sentinel:check                           # One command — full project scan
-```
-
-## Pre-Implementation Checklist
-
-Before editing source code, sentinel requires `.sentinel/current-task.json`:
-
-```json
-{
-  "task_id": "CRIT-2",
-  "why": "API endpoint crashes with TypeError on every call",
-  "approach": "Replace dict .get() with dataclass attribute access",
-  "impact_files": ["main.py:get_artifact — 2 callers", "test_api.py — needs new test"],
-  "blast_radius": {
-    "tests_break": ["test_artifact_endpoint"],
-    "tests_add": ["test_artifact_not_found", "test_artifact_invalid_id"]
-  },
-  "verify_command": "pytest tests/test_api.py -x -v"
-}
-```
-
-This is your blueprint — fill it with real analysis, not placeholders.
-The `pre-edit-gate` hook blocks all source code edits until this file exists with all required fields.
 
 ## Configuration
 
-`config/sentinel.json` (or `.sentinel/config.json` after `/sentinel:init`):
+After `/sentinel:init`, configure at `.sentinel/config.json`:
 
 ```json
 {
-  "source_extensions": ["py", "ts", "tsx", "js", "jsx", "go", "rs", "java", "c", "cpp"],
-  "skip_patterns": ["**/test_*", "**/*.test.*", "**/node_modules/**"],
+  "language": "auto",
+  "source_extensions": ["py", "ts", "tsx", "js", "jsx", "go"],
+  "skip_patterns": ["**/test_*", "**/node_modules/**"],
   "header_threshold_lines": 200,
   "error_repeat_limit": 3,
   "enforcement": {
@@ -168,73 +210,113 @@ The `pre-edit-gate` hook blocks all source code edits until this file exists wit
     "surgical_change": true,
     "scope_guard": true,
     "secret_scan": true,
-    "file_header_check": true
+    "file_header_check": true,
+    "env_safety": true,
+    "error_logger": true
   }
 }
 ```
 
+**Enforcement levels:**
+- **Strict** (default) — All hooks active
+- **Standard** — Disable `pre_edit_gate` (no checklist required)
+- **Minimal** — Only `deny_dummy` + `secret_scan`
+
+Set any enforcement key to `false` to disable that hook.
+
 ## Platform Support
 
-| OS | Status | Requirements |
-|----|--------|-------------|
-| **Linux** | Full support | GNU grep + jq (pre-installed on most distros) |
-| **macOS** | Full support | `brew install grep jq` (auto-detects `ggrep`) |
-| **Windows** | WSL/Git Bash | Native PowerShell not supported (bash scripts) |
+| OS | Status | Notes |
+|----|--------|-------|
+| **Linux** | ✅ Full | GNU grep + jq (pre-installed on most distros) |
+| **macOS** | ✅ Full | `brew install grep jq` (auto-detects `ggrep`) |
+| **Windows** | ⚠️ WSL | Requires WSL or Git Bash |
 
-If PCRE grep or jq is missing, hooks **warn and gracefully degrade** — they never block incorrectly.
-Session startup shows a platform compatibility report if any tools are missing.
+Missing tools? Sentinel **warns and gracefully degrades** — it never blocks incorrectly. Session startup shows a compatibility report.
 
-## Works With
+## Compatibility
 
-- **oh-my-claudecode (OMC)** — Auto-detected. Session init injects OMC notepad/compaction state. Both systems coexist without conflict.
-- **Any Claude Code project** — No external dependencies beyond bash, jq, git.
+- **Claude Code** — Required (this is a Claude Code plugin)
+- **oh-my-claudecode (OMC)** — Auto-detected. Session init injects OMC state. Both coexist without conflict.
+- **Any project** — No external dependencies beyond bash, jq, git.
+
+## Pre-Implementation Checklist
+
+Sentinel requires `.sentinel/current-task.json` before source code edits:
+
+```json
+{
+  "task_id": "CRIT-2",
+  "why": "API endpoint crashes with TypeError",
+  "approach": "Replace dict .get() with dataclass attribute access",
+  "impact_files": ["main.py:get_artifact — 2 callers"],
+  "blast_radius": {
+    "tests_break": ["test_artifact_endpoint"],
+    "tests_add": ["test_artifact_not_found"]
+  },
+  "verify_command": "pytest tests/test_api.py -x"
+}
+```
+
+Disable with `"pre_edit_gate": false` in config if you prefer not to use checklists.
+
+## FAQ
+
+**Q: Does sentinel slow down my workflow?**
+No. Each hook has a timeout (3-10s) and fail-open design. If a hook crashes or times out, the action proceeds. Median hook execution: <100ms.
+
+**Q: Can I disable specific hooks?**
+Yes. Set any key in `enforcement` to `false` in `.sentinel/config.json`. The hook will silently skip.
+
+**Q: Will it block my test files?**
+No. Test files (`test_*`, `*.test.*`, `*.spec.*`, `/tests/`) are excluded from blocking hooks. You can write `assert True` in tests.
+
+**Q: Does it work with other plugins?**
+Yes. Sentinel is designed to coexist with OMC and other Claude Code plugins. Hook order is deterministic.
+
+**Q: What if jq is not installed?**
+Blocking hooks (deny-dummy, secret-scan, pre-edit-gate, env-safety) will **refuse all edits** until jq is installed. Warning hooks silently skip. This is by design — missing jq means no JSON parsing, so safety cannot be guaranteed.
+
+**Q: How do I uninstall?**
+```bash
+claude plugin uninstall sentinel
+rm -rf .sentinel/  # Optional: remove project state
+```
 
 ## Architecture
 
 ```
 sentinel/
-├── .claude-plugin/
-│   ├── plugin.json              # Plugin manifest
-│   └── marketplace.json         # Discovery metadata
+├── .claude-plugin/          # Plugin manifest
 ├── hooks/
-│   ├── hooks.json               # 13 hooks registered across 7 event types
+│   ├── hooks.json           # 13 hooks across 7 event types
 │   └── scripts/
-│       ├── _common.sh           # Cross-platform compatibility layer
-│       ├── deep-analyze.py      # Python AST pattern analyzer (15+ patterns)
-│       ├── deny-dummy.sh        # Block dummy/stub code (BLOCKING)
-│       ├── pre-edit-gate.sh     # Require checklist before edits (BLOCKING)
-│       ├── secret-scan.sh       # Block hardcoded secrets (BLOCKING)
-│       ├── env-safety.sh        # Block dangerous commands (BLOCKING)
-│       ├── surgical-change.sh   # Enforce minimal diffs (WARNING)
-│       ├── scope-guard.sh       # Detect scope reduction (WARNING)
-│       ├── post-edit-verify.sh  # Quality checks after edit (WARNING)
-│       ├── file-header-check.sh # Header existence check (WARNING)
-│       ├── completion-check.sh  # Incomplete work detection (WARNING)
-│       ├── error-logger.sh      # Error classification + logging
-│       ├── session-init.sh      # Session startup context injection
-│       ├── state-preserve.sh    # Pre-compaction state save
-│       └── session-save.sh      # Session end state save
-├── agents/
-│   ├── sentinel-reviewer.md     # 47-pattern code review agent
-│   └── sentinel-verifier.md     # Evidence-based completion verifier
-├── skills/
-│   ├── ai-mistakes/SKILL.md     # 47 AI mistake patterns reference
-│   ├── checklist/SKILL.md       # Pre-implementation checklist guide
-│   ├── file-headers/SKILL.md    # File header generation guide
-│   └── memory-guard/SKILL.md    # Context preservation strategies
-├── commands/
-│   ├── check.md                 # /sentinel:check
-│   ├── init.md                  # /sentinel:init
-│   └── header.md                # /sentinel:header
-├── config/sentinel.json         # Default configuration
-├── templates/
-│   ├── CLAUDE.md.template       # Project CLAUDE.md starting point
-│   ├── settings.json.template   # Claude Code settings.json deny rules
-│   └── file-header.template     # File header comment format
-├── README.md
-└── LICENSE (MIT)
+│       ├── _common.sh       # Cross-platform layer + i18n + stats
+│       ├── deep-analyze.py  # AST analyzer (Python/TS/JS/Go)
+│       └── *.sh             # 13 hook scripts
+├── agents/                  # sentinel-reviewer + sentinel-verifier
+├── skills/                  # 4 reference guides
+├── commands/                # 3 slash commands
+├── config/                  # Default configuration
+├── templates/               # CLAUDE.md, settings.json, file-header
+├── tests/                   # 26 automated tests
+└── .github/workflows/       # CI (ShellCheck + tests + validation)
 ```
+
+## Contributing
+
+1. Fork and clone
+2. Make changes to hook scripts in `hooks/scripts/`
+3. Run tests: `bash tests/test-hooks.sh`
+4. Run lint: `shellcheck -s bash -S warning hooks/scripts/*.sh`
+5. Submit PR
 
 ## License
 
-MIT
+[MIT](LICENSE) — use it anywhere, modify freely.
+
+---
+
+<div align="center">
+<strong>Built by <a href="https://github.com/tk-logl">TopKloud</a></strong>
+</div>
