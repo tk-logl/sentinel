@@ -100,18 +100,18 @@ When a session starts with a previous state:
 ## Trigger: auto | Branch: feature/my-feature
 
 ## 1. Session Intent
-Active task: CRIT-1 — Fix n8n status endpoint crash
-Last commits: abc1234 fix: correct PMRequest attribute access
+Active task: BUG-42 — Fix user login timeout on slow connections
+Last commits: abc1234 fix: increase connection timeout to 30s
 
 ## 2. Modified Files
-M  voice/backend/main.py
-M  tests/test_n8n.py
+M  src/auth/login.py
+M  tests/test_auth.py
 Diff summary: 2 files changed, 15 insertions(+), 3 deletions(-)
 
 ## 3. Decisions Made
-- Used attribute access instead of dict .get() because PMRequest is a dataclass
-- Rejected converting to dict first — unnecessary overhead
-- Added null check for state.get_request() returning None
+- Used connection pooling instead of per-request connections for better performance
+- Rejected retry-on-timeout approach — masks underlying network issues
+- Added graceful timeout with user-facing error message
 
 ## 4. Current State
 Git status: 2 modified files (uncommitted)

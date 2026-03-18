@@ -34,14 +34,14 @@ Headers solve this in 5-12 lines, saving investigation time and preventing mista
 ### Python
 ```python
 """
-main.py — FastAPI application server with LLM routing and PM Engine integration.
+app.py — Main application server with API routing and request handling.
 
-Co-modify: pm_engine/engine.py, pm_engine/dispatcher.py, commands.py
+Co-modify: services/auth.py, services/handler.py, utils/response.py
 Invariants:
-  - All SSE endpoints must use ticket-based auth (never token in URL)
-  - LLM responses must stream via StreamingResponse, never buffered
-  - Session objects must be cleaned up on disconnect
-Verify: pytest tests/test_main.py -x && curl -s localhost:8443/health | jq .status
+  - All endpoints must validate auth before processing
+  - Responses must use consistent error format
+  - Database connections must be properly closed on error
+Verify: pytest tests/test_app.py -x && curl -s localhost:8000/health | jq .status
 """
 ```
 
