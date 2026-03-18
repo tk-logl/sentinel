@@ -116,6 +116,14 @@ sentinel_check_enabled() {
   return 0
 }
 
+# --- Output sanitization ---
+# Strip ANSI escape sequences and control characters from user-controlled strings
+# before echoing them. Prevents terminal escape injection.
+# Usage: echo "$(sentinel_sanitize "$UNTRUSTED_STRING")"
+sentinel_sanitize() {
+  printf '%s' "$1" | tr -d '\033' | sed 's/[[:cntrl:]]//g'
+}
+
 # --- Utility: get script directory ---
 # Usage: source "${SCRIPT_DIR}/_common.sh"
 # The calling script should set SCRIPT_DIR before sourcing.

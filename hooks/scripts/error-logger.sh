@@ -49,19 +49,27 @@ LOG_DIR="${PROJECT_ROOT}/.sentinel"
 mkdir -p "$LOG_DIR"
 LOG_FILE="${LOG_DIR}/error-log.jsonl"
 
-# Create log entry
+# Create log entry (using jq for safe JSON construction — no injection via quotes/backslashes)
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 ERROR_HASH=$(echo "${COMMAND}${ERROR_TYPE}" | md5sum | cut -c1-8)
 COMMAND_SHORT=$(echo "$COMMAND" | head -1 | cut -c1-100)
 OUTPUT_SHORT=$(echo "$OUTPUT" | head -3 | tr '\n' ' ' | cut -c1-200)
 
-# Write to log
-echo "{\"ts\":\"${TIMESTAMP}\",\"type\":\"${ERROR_TYPE}\",\"exit\":${EXIT_CODE},\"hash\":\"${ERROR_HASH}\",\"cmd\":\"${COMMAND_SHORT}\",\"output\":\"${OUTPUT_SHORT}\"}" >> "$LOG_FILE"
+# Write to log — jq --arg safely escapes all special characters
+jq -n --arg ts "$TIMESTAMP" \
+      --arg type "$ERROR_TYPE" \
+      --argjson exit "$EXIT_CODE" \
+      --arg hash "$ERROR_HASH" \
+      --arg cmd "$COMMAND_SHORT" \
+      --arg output "$OUTPUT_SHORT" \
+      '{ts:$ts,type:$type,exit:$exit,hash:$hash,cmd:$cmd,output:$output}' \
+      -c >> "$LOG_FILE"
 
 # === MANDATORY ERROR RESPONSE — injected on EVERY error ===
+# Sanitize user-controlled output (uses sentinel_sanitize from _common.sh)
 echo "🚨 [Sentinel Error-Logger] Command failed (${ERROR_TYPE}, exit ${EXIT_CODE})"
-echo "  Command: ${COMMAND_SHORT}"
-echo "  Output: ${OUTPUT_SHORT}"
+echo "  Command: $(sentinel_sanitize "$COMMAND_SHORT")"
+echo "  Output: $(sentinel_sanitize "$OUTPUT_SHORT")"
 echo ""
 echo "  ⛔ DO NOT SKIP THIS ERROR. DO NOT MOVE ON."
 echo "  You MUST either:"

@@ -1,0 +1,132 @@
+name: Sentinel CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Run ShellCheck on all hook scripts
+        run: |
+          shellcheck -s bash -S warning hooks/scripts/*.sh
+          echo "ShellCheck passed"
+
+  test:
+    name: Test Hooks
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            sudo apt-get install -y jq
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install jq grep
+          fi
+        shell: bash
+
+      - name: Run test suite
+        run: bash tests/test-hooks.sh
+        shell: bash
+
+  validate-json:
+    name: Validate JSON
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate hooks.json
+        run: jq . hooks/hooks.json > /dev/null
+
+      - name: Validate plugin.json
+        run: jq . .claude-plugin/plugin.json > /dev/null
+
+      - name: Validate marketplace.json
+        run: jq . .claude-plugin/marketplace.json > /dev/null
+
+      - name: Validate sentinel.json config
+        run: jq . config/sentinel.json > /dev/null
+
+  structure:
+    name: Validate Structure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required files exist
+        run: |
+          MISSING=0
+          for f in \
+            .claude-plugin/plugin.json \
+            .claude-plugin/marketplace.json \
+            hooks/hooks.json \
+            hooks/scripts/_common.sh \
+            hooks/scripts/deny-dummy.sh \
+            hooks/scripts/pre-edit-gate.sh \
+            hooks/scripts/secret-scan.sh \
+            hooks/scripts/env-safety.sh \
+            hooks/scripts/surgical-change.sh \
+            hooks/scripts/scope-guard.sh \
+            hooks/scripts/post-edit-verify.sh \
+            hooks/scripts/file-header-check.sh \
+            hooks/scripts/completion-check.sh \
+            hooks/scripts/error-logger.sh \
+            hooks/scripts/session-init.sh \
+            hooks/scripts/state-preserve.sh \
+            hooks/scripts/session-save.sh \
+            hooks/scripts/deep-analyze.py \
+            agents/sentinel-reviewer.md \
+            agents/sentinel-verifier.md \
+            skills/ai-mistakes/SKILL.md \
+            skills/checklist/SKILL.md \
+            skills/file-headers/SKILL.md \
+            skills/memory-guard/SKILL.md \
+            commands/check.md \
+            commands/init.md \
+            commands/header.md \
+            config/sentinel.json \
+            templates/CLAUDE.md.template \
+            templates/settings.json.template \
+            templates/file-header.template \
+            README.md \
+            CHANGELOG.md \
+            LICENSE; do
+            if [[ ! -f "$f" ]]; then
+              echo "MISSING: $f"
+              MISSING=$((MISSING + 1))
+            fi
+          done
+          if [[ $MISSING -gt 0 ]]; then
+            echo "ERROR: $MISSING required file(s) missing"
+            exit 1
+          fi
+          echo "All required files present"
+
+      - name: Verify hooks.json references existing scripts
+        run: |
+          MISSING=0
+          for script in $(jq -r '.hooks[][].hooks[].command' hooks/hooks.json | grep -oP 'scripts/\S+\.sh"' | tr -d '"'); do
+            if [[ ! -f "hooks/$script" ]]; then
+              echo "MISSING script referenced in hooks.json: hooks/$script"
+              MISSING=$((MISSING + 1))
+            fi
+          done
+          if [[ $MISSING -gt 0 ]]; then
+            echo "ERROR: hooks.json references $MISSING missing script(s)"
+            exit 1
+          fi
+          echo "All hooks.json script references valid"
