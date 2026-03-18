@@ -5,8 +5,8 @@
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/_common.sh"
-sentinel_require_jq "pre-edit-gate"
-sentinel_require_pcre "pre-edit-gate"
+sentinel_require_jq "pre-edit-gate" "blocking"
+sentinel_require_pcre "pre-edit-gate" "blocking"
 sentinel_check_enabled "pre_edit_gate"
 
 INPUT=$(cat)
@@ -62,20 +62,24 @@ if [[ ! -f "$TASK_FILE" ]]; then
   exit 2
 fi
 
-# Validate required fields
-TASK_ID=$(jq -r '.task_id // empty' "$TASK_FILE" 2>/dev/null)
-WHY=$(jq -r '.why // empty' "$TASK_FILE" 2>/dev/null)
-APPROACH=$(jq -r '.approach // empty' "$TASK_FILE" 2>/dev/null)
-IMPACT=$(jq -r '.impact_files // empty' "$TASK_FILE" 2>/dev/null)
-BLAST=$(jq -r '.blast_radius // empty' "$TASK_FILE" 2>/dev/null)
-VERIFY=$(jq -r '.verify_command // empty' "$TASK_FILE" 2>/dev/null)
+# Validate required fields — single jq call for performance (avoids 7 forks)
+FIELDS_JSON=$(jq -r '[
+  (.task_id // ""),
+  (.why // ""),
+  (.approach // ""),
+  (.impact_files | if . == null then "" else (. | tostring) end),
+  (.blast_radius | if . == null then "" else (. | tostring) end),
+  (.verify_command // "")
+] | join("\t")' "$TASK_FILE" 2>/dev/null)
+
+IFS=$'\t' read -r TASK_ID WHY APPROACH IMPACT BLAST VERIFY <<< "$FIELDS_JSON"
 
 MISSING=""
 [[ -z "$TASK_ID" ]] && MISSING="${MISSING}  - task_id (unique task identifier)\n"
 [[ -z "$WHY" ]] && MISSING="${MISSING}  - why (business/quality reason)\n"
 [[ -z "$APPROACH" ]] && MISSING="${MISSING}  - approach (chosen method + reasoning)\n"
-[[ "$IMPACT" == "null" || -z "$IMPACT" ]] && MISSING="${MISSING}  - impact_files (affected callers/importers list)\n"
-[[ "$BLAST" == "null" || -z "$BLAST" ]] && MISSING="${MISSING}  - blast_radius (tests that break + tests to add)\n"
+[[ -z "$IMPACT" ]] && MISSING="${MISSING}  - impact_files (affected callers/importers list)\n"
+[[ -z "$BLAST" ]] && MISSING="${MISSING}  - blast_radius (tests that break + tests to add)\n"
 [[ -z "$VERIFY" ]] && MISSING="${MISSING}  - verify_command (how to verify this change works)\n"
 
 if [[ -n "$MISSING" ]]; then

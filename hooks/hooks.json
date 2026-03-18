@@ -32,22 +32,22 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre-edit-gate.sh\"",
-            "timeout": 5
+            "timeout": 10
           },
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/deny-dummy.sh\"",
-            "timeout": 3
+            "timeout": 10
           },
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/surgical-change.sh\"",
-            "timeout": 3
+            "timeout": 5
           },
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/secret-scan.sh\"",
-            "timeout": 3
+            "timeout": 10
           }
         ]
       },
@@ -57,7 +57,7 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/env-safety.sh\"",
-            "timeout": 3
+            "timeout": 10
           }
         ]
       }
@@ -69,7 +69,7 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/post-edit-verify.sh\"",
-            "timeout": 5
+            "timeout": 10
           },
           {
             "type": "command",

@@ -39,7 +39,7 @@ if [[ -f "$TASK_FILE" ]]; then
 fi
 
 # 3. TODO/FIXME/PLACEHOLDER in recently changed files [Pattern #1]
-CHANGED_FILES=$(git diff --name-only HEAD 2>/dev/null; git diff --cached --name-only 2>/dev/null)
+CHANGED_FILES=$( (git diff --name-only HEAD 2>/dev/null; git diff --cached --name-only 2>/dev/null) | sort -u)
 if [[ -n "$CHANGED_FILES" ]]; then
   TODO_FOUND=""
   while IFS= read -r file; do
@@ -116,20 +116,31 @@ if [[ -f "$LOG_FILE" ]]; then
   fi
 fi
 
-# 8. Shell implementations — functions that return empty/hardcoded values
+# 8. Shell implementations — functions whose ENTIRE body is just a return statement
+# Only flags single-statement functions (def + return with nothing in between).
+# A 10-line function ending with return [] is legitimate, NOT a facade.
 if [[ -n "$CHANGED_FILES" ]]; then
   SHELL_FOUND=""
   while IFS= read -r file; do
     [[ -z "$file" || ! -f "$PROJECT_ROOT/$file" ]] && continue
     [[ "$file" == *.py ]] || continue
-    # Functions that just return "", {}, [], 0, False — likely shell implementations
-    SHELLS=$(grep -nP '^\s+return\s+(""|{}|\[\]|0|False|None|\{\})\s*$' "$PROJECT_ROOT/$file" 2>/dev/null | head -3)
-    if [[ -n "$SHELLS" ]]; then
-      SHELL_FOUND="${SHELL_FOUND}  ${file}: $(echo "$SHELLS" | head -1)\n"
-    fi
+    # Find return lines with empty values
+    while IFS= read -r match; do
+      [[ -z "$match" ]] && continue
+      LINE_NUM=$(echo "$match" | cut -d: -f1)
+      # Check if the line directly before is a def statement or docstring close
+      PREV_LINE=$(sed -n "$((LINE_NUM - 1))p" "$PROJECT_ROOT/$file" 2>/dev/null)
+      PREV2_LINE=$(sed -n "$((LINE_NUM - 2))p" "$PROJECT_ROOT/$file" 2>/dev/null)
+      # Flag only if: def is on line-1, or def is on line-2 with docstring on line-1
+      if echo "$PREV_LINE" | grep -qP '^\s*(def |class )'; then
+        SHELL_FOUND="${SHELL_FOUND}  ${file}:${LINE_NUM}: $(echo "$match" | cut -d: -f2-)\n"
+      elif echo "$PREV2_LINE" | grep -qP '^\s*(def |class )' && echo "$PREV_LINE" | grep -qP '^\s*("""|'"'"''"'"''"'"'|#)'; then
+        SHELL_FOUND="${SHELL_FOUND}  ${file}:${LINE_NUM}: $(echo "$match" | cut -d: -f2-)\n"
+      fi
+    done < <(grep -nP '^\s+return\s+(""|{}|\[\]|0|False|None|\{\})\s*$' "$PROJECT_ROOT/$file" 2>/dev/null | head -5)
   done <<< "$CHANGED_FILES"
   if [[ -n "$SHELL_FOUND" ]]; then
-    WARNINGS="${WARNINGS}⚠️  Possible shell/facade implementations (return empty values):\n${SHELL_FOUND}\n"
+    WARNINGS="${WARNINGS}⚠️  Possible shell/facade implementations (single-statement functions):\n${SHELL_FOUND}\n"
   fi
 fi
 

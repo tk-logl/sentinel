@@ -115,10 +115,25 @@ if [[ -n "$COMPAT_ISSUES" ]]; then
 fi
 
 echo "=== Sentinel Active ==="
-echo "Enforcement: pre-edit-gate, deny-dummy, surgical-change, scope-guard,"
-echo "             secret-scan, env-safety, error-logger, post-edit-verify"
 if [[ "$SENTINEL_NO_PCRE" == "1" || "$SENTINEL_NO_JQ" == "1" ]]; then
-  echo "  (some hooks degraded — see Platform Compatibility above)"
+  echo "⛔ DEGRADED MODE — missing dependencies disable protection:"
+  if [[ "$SENTINEL_NO_JQ" == "1" ]]; then
+    echo "  BLOCKED (jq missing — these hooks REFUSE all edits until jq is installed):"
+    echo "    - secret-scan, deny-dummy, pre-edit-gate, env-safety"
+    echo "  DISABLED (jq missing — these hooks silently skip):"
+    echo "    - surgical-change, scope-guard, post-edit-verify, error-logger,"
+    echo "      file-header-check, completion-check, state-preserve, session-save"
+  fi
+  if [[ "$SENTINEL_NO_PCRE" == "1" ]]; then
+    echo "  DISABLED (PCRE grep missing — pattern matching unavailable):"
+    echo "    - All hooks that use regex pattern detection"
+  fi
+  echo ""
+  echo "  FIX: Install missing tools to enable full protection."
+  echo "  Linux: sudo apt install jq    macOS: brew install grep jq"
+else
+  echo "Enforcement: pre-edit-gate, deny-dummy, surgical-change, scope-guard,"
+  echo "             secret-scan, env-safety, error-logger, post-edit-verify"
 fi
 echo ""
 

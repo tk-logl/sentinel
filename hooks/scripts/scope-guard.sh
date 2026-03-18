@@ -16,18 +16,18 @@ USER_PROMPT=$(echo "$INPUT" | jq -r '.tool_input.user_prompt // .tool_input.cont
 
 WARNINGS=""
 
-# Korean scope-reduction patterns
-if echo "$USER_PROMPT" | grep -qP '일단|나중에|추후|우선은|간소화|단순화|기본만|대충|임시로|향후|나중'; then
+# Korean scope-reduction patterns (precise — common conversational fillers removed)
+if echo "$USER_PROMPT" | grep -qP '대충|임시로|간소화해|단순화해|기본만|추후에.*구현|나중에.*추가|향후.*개선'; then
   WARNINGS="${WARNINGS}  🇰🇷 범위 축소 표현 감지\n"
 fi
 
-# English scope-reduction patterns
-if echo "$USER_PROMPT" | grep -qiP 'for now|simplified|basic version|placeholder|will add later|good enough|skip.*(test|validation|error)|just.*(stub|mock|placeholder)|temporary|rough draft|mvp only|bare minimum'; then
+# English scope-reduction patterns (precise — common phrases removed)
+if echo "$USER_PROMPT" | grep -qiP 'placeholder|will add later|good enough for now|skip.*(test|validation|error)|just.*(stub|mock|placeholder)|rough draft|mvp only|bare minimum|implement later|add later|todo for later|hack for now'; then
   WARNINGS="${WARNINGS}  🇬🇧 Scope reduction language detected\n"
 fi
 
-# Japanese scope-reduction patterns
-if echo "$USER_PROMPT" | grep -qP 'とりあえず|後で|仮に|簡単に|一旦'; then
+# Japanese scope-reduction patterns (precise — common fillers removed)
+if echo "$USER_PROMPT" | grep -qP 'とりあえず|後で.*追加|仮に.*実装'; then
   WARNINGS="${WARNINGS}  🇯🇵 Scope reduction language detected\n"
 fi
 

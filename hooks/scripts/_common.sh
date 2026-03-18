@@ -39,22 +39,38 @@ fi
 sentinel_require_pcre() {
   if [[ "$SENTINEL_NO_PCRE" == "1" ]]; then
     local hook_name="${1:-hook}"
-    echo "⚠️ [Sentinel] GNU grep (PCRE) not available — ${hook_name} disabled."
-    echo "  Linux: sudo apt install grep"
-    echo "  macOS: brew install grep"
-    echo "  Windows: use WSL or Git Bash"
-    exit 0
+    local severity="${2:-warning}"  # "blocking" or "warning"
+    if [[ "$severity" == "blocking" ]]; then
+      echo "⛔ [Sentinel] GNU grep (PCRE) not available — ${hook_name} CANNOT RUN."
+      echo "  This is a BLOCKING hook. Install PCRE grep to enable protection."
+      echo "  Linux: sudo apt install grep"
+      echo "  macOS: brew install grep"
+      echo "  Windows: use WSL or Git Bash"
+      exit 2
+    else
+      echo "⚠️ [Sentinel] GNU grep (PCRE) not available — ${hook_name} disabled."
+      echo "  Linux: sudo apt install grep | macOS: brew install grep"
+      exit 0
+    fi
   fi
 }
 
 sentinel_require_jq() {
   if [[ "$SENTINEL_NO_JQ" == "1" ]]; then
     local hook_name="${1:-hook}"
-    echo "⚠️ [Sentinel] jq not found — ${hook_name} disabled."
-    echo "  Linux: sudo apt install jq"
-    echo "  macOS: brew install jq"
-    echo "  Windows: choco install jq (or scoop install jq)"
-    exit 0
+    local severity="${2:-warning}"  # "blocking" or "warning"
+    if [[ "$severity" == "blocking" ]]; then
+      echo "⛔ [Sentinel] jq not found — ${hook_name} CANNOT RUN."
+      echo "  This is a BLOCKING hook. Install jq to enable protection."
+      echo "  Linux: sudo apt install jq"
+      echo "  macOS: brew install jq"
+      echo "  Windows: choco install jq (or scoop install jq)"
+      exit 2
+    else
+      echo "⚠️ [Sentinel] jq not found — ${hook_name} disabled."
+      echo "  Linux: sudo apt install jq | macOS: brew install jq"
+      exit 0
+    fi
   fi
 }
 
