@@ -107,7 +107,10 @@ if [[ -n "$VIOLATIONS" ]]; then
   echo "  Node:   process.env.API_KEY or dotenv"
   echo "  Go:     os.Getenv(\"API_KEY\")"
   echo "→ Move secrets to environment variables, then retry."
+  sentinel_stats_increment "blocks"
+  sentinel_stats_increment "pattern_hardcoded_secret"
   exit 2
 fi
 
+sentinel_stats_increment "checks"
 exit 0

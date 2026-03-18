@@ -41,6 +41,8 @@ if [[ -n "$WARNINGS" ]]; then
   echo "  - No 'basic version first' — build the real version"
   echo "  - No 'placeholder' — write the actual implementation"
   echo "  - If scope is genuinely too large, discuss with the user first"
+  sentinel_stats_increment "warnings"
+  sentinel_stats_increment "pattern_scope_reduction"
 fi
 
 exit 0

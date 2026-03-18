@@ -5,6 +5,7 @@
 
 # --- Platform detection ---
 SENTINEL_OS="$(uname -s)"
+export SENTINEL_OS
 
 # --- PCRE grep compatibility ---
 # All sentinel hooks use grep -P (Perl regex).
@@ -127,3 +128,212 @@ sentinel_sanitize() {
 # --- Utility: get script directory ---
 # Usage: source "${SCRIPT_DIR}/_common.sh"
 # The calling script should set SCRIPT_DIR before sourcing.
+
+# --- i18n Message System ---
+# Auto-detects locale from config or system LANG.
+# Usage: sentinel_msg "key" → prints localized message
+
+SENTINEL_LANG=""
+
+sentinel_detect_lang() {
+  [[ -n "$SENTINEL_LANG" ]] && return 0
+
+  # 1. Check project config
+  local project_root
+  project_root=$(git rev-parse --show-toplevel 2>/dev/null)
+  if [[ -n "$project_root" && -f "${project_root}/.sentinel/config.json" ]] && [[ "$SENTINEL_NO_JQ" == "0" ]]; then
+    local cfg_lang
+    cfg_lang=$(jq -r '.language // "auto"' "${project_root}/.sentinel/config.json" 2>/dev/null)
+    if [[ "$cfg_lang" != "auto" && -n "$cfg_lang" ]]; then
+      SENTINEL_LANG="$cfg_lang"
+      return 0
+    fi
+  fi
+
+  # 2. Auto-detect from system locale
+  local sys_lang="${LANG:-${LC_ALL:-en}}"
+  case "$sys_lang" in
+    ko*) SENTINEL_LANG="ko" ;;
+    ja*) SENTINEL_LANG="ja" ;;
+    zh*) SENTINEL_LANG="zh" ;;
+    es*) SENTINEL_LANG="es" ;;
+    *)   SENTINEL_LANG="en" ;;
+  esac
+}
+
+sentinel_msg() {
+  local key="$1"
+  sentinel_detect_lang
+
+  case "$key" in
+    "blocked")
+      case "$SENTINEL_LANG" in
+        ko) echo "차단됨" ;;
+        ja) echo "ブロック" ;;
+        *) echo "BLOCKED" ;;
+      esac ;;
+    "warning")
+      case "$SENTINEL_LANG" in
+        ko) echo "경고" ;;
+        ja) echo "警告" ;;
+        *) echo "WARNING" ;;
+      esac ;;
+    "dummy_detected")
+      case "$SENTINEL_LANG" in
+        ko) echo "더미/플레이스홀더 코드 감지" ;;
+        ja) echo "ダミー/プレースホルダーコード検出" ;;
+        *) echo "Placeholder/stub code detected" ;;
+      esac ;;
+    "secret_detected")
+      case "$SENTINEL_LANG" in
+        ko) echo "하드코딩된 시크릿 감지" ;;
+        ja) echo "ハードコードされたシークレットを検出" ;;
+        *) echo "Hardcoded secrets detected" ;;
+      esac ;;
+    "scope_reduction")
+      case "$SENTINEL_LANG" in
+        ko) echo "범위 축소 표현 감지 — 완전히 구현하거나 구현하지 마세요" ;;
+        ja) echo "スコープ縮小を検出 — 完全に実装するか、実装しないでください" ;;
+        *) echo "Scope reduction detected — implement completely or not at all" ;;
+      esac ;;
+    "surgical_rule")
+      case "$SENTINEL_LANG" in
+        ko) echo "최소 diff 규칙: 가능한 가장 작은 변경. 추가 후 교체. 삭제 전 검색." ;;
+        ja) echo "最小差分ルール: 最小限の変更。追加してから置換。削除前に検索。" ;;
+        *) echo "Surgical Change Rule: smallest diff possible. Add before replace. Grep before delete." ;;
+      esac ;;
+    "env_unsafe")
+      case "$SENTINEL_LANG" in
+        ko) echo "위험한 시스템 명령 차단" ;;
+        ja) echo "危険なシステムコマンドをブロック" ;;
+        *) echo "Dangerous system command blocked" ;;
+      esac ;;
+    "checklist_missing")
+      case "$SENTINEL_LANG" in
+        ko) echo "사전구현 체크리스트(.sentinel/current-task.json)가 없습니다" ;;
+        ja) echo "事前実装チェックリスト(.sentinel/current-task.json)がありません" ;;
+        *) echo ".sentinel/current-task.json not found — create pre-implementation checklist" ;;
+      esac ;;
+    "completion_check")
+      case "$SENTINEL_LANG" in
+        ko) echo "완료 전 검증 — 아래 항목을 확인하세요" ;;
+        ja) echo "完了前の検証 — 以下の項目を確認してください" ;;
+        *) echo "Completion verification — review items below" ;;
+      esac ;;
+    "no_issues")
+      case "$SENTINEL_LANG" in
+        ko) echo "자동 검사에서 문제가 발견되지 않았습니다" ;;
+        ja) echo "自動チェックで問題は検出されませんでした" ;;
+        *) echo "No issues detected by automated checks" ;;
+      esac ;;
+    "stats_header")
+      case "$SENTINEL_LANG" in
+        ko) echo "세션 품질 리포트" ;;
+        ja) echo "セッション品質レポート" ;;
+        *) echo "Session Quality Report" ;;
+      esac ;;
+    *)
+      echo "$key" ;;
+  esac
+}
+
+# --- Usage Statistics Tracking ---
+# Tracks hook activations in .sentinel/stats.json
+# Usage: sentinel_stats_increment "checks" | "blocks" | "warnings" | "pattern_NAME"
+
+sentinel_stats_increment() {
+  local counter="$1"
+  [[ -z "$counter" ]] && return 0
+  [[ "$SENTINEL_NO_JQ" == "1" ]] && return 0
+
+  local project_root
+  project_root=$(git rev-parse --show-toplevel 2>/dev/null)
+  [[ -z "$project_root" ]] && return 0
+
+  local stats_file="${project_root}/.sentinel/stats.json"
+  mkdir -p "${project_root}/.sentinel"
+
+  # Initialize if missing
+  if [[ ! -f "$stats_file" ]]; then
+    cat > "$stats_file" << 'INIT_EOF'
+{"session_start":"","checks":0,"blocks":0,"warnings":0,"patterns":{}}
+INIT_EOF
+  fi
+
+  # Set session_start if empty
+  local cur_start
+  cur_start=$(jq -r '.session_start // ""' "$stats_file" 2>/dev/null)
+  if [[ -z "$cur_start" ]]; then
+    local ts
+    ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    jq --arg ts "$ts" '.session_start = $ts' "$stats_file" > "${stats_file}.tmp" 2>/dev/null && mv "${stats_file}.tmp" "$stats_file"
+  fi
+
+  # Increment counter
+  if [[ "$counter" == pattern_* ]]; then
+    local pname="${counter#pattern_}"
+    jq --arg p "$pname" '.patterns[$p] = ((.patterns[$p] // 0) + 1)' "$stats_file" > "${stats_file}.tmp" 2>/dev/null && mv "${stats_file}.tmp" "$stats_file"
+  else
+    jq --arg k "$counter" '.[$k] = ((.[$k] // 0) + 1)' "$stats_file" > "${stats_file}.tmp" 2>/dev/null && mv "${stats_file}.tmp" "$stats_file"
+  fi
+}
+
+sentinel_stats_report() {
+  [[ "$SENTINEL_NO_JQ" == "1" ]] && return 0
+
+  local project_root
+  project_root=$(git rev-parse --show-toplevel 2>/dev/null)
+  [[ -z "$project_root" ]] && return 0
+
+  local stats_file="${project_root}/.sentinel/stats.json"
+  [[ ! -f "$stats_file" ]] && return 0
+
+  local checks blocks warnings
+  checks=$(jq -r '.checks // 0' "$stats_file" 2>/dev/null)
+  blocks=$(jq -r '.blocks // 0' "$stats_file" 2>/dev/null)
+  warnings=$(jq -r '.warnings // 0' "$stats_file" 2>/dev/null)
+
+  # Only show report if 3+ checks happened
+  local total=$((checks + blocks + warnings))
+  [[ $total -lt 3 ]] && return 0
+
+  local start_time
+  start_time=$(jq -r '.session_start // ""' "$stats_file" 2>/dev/null)
+
+  # Calculate quality score (100 - penalty for blocks)
+  local score=100
+  if [[ $checks -gt 0 ]]; then
+    local block_rate=$(( (blocks * 100) / (checks + blocks + warnings) ))
+    score=$((100 - block_rate))
+    [[ $score -lt 0 ]] && score=0
+  fi
+
+  # Grade
+  local grade="A+"
+  if [[ $score -lt 50 ]]; then grade="F"
+  elif [[ $score -lt 60 ]]; then grade="D"
+  elif [[ $score -lt 70 ]]; then grade="C"
+  elif [[ $score -lt 80 ]]; then grade="B"
+  elif [[ $score -lt 90 ]]; then grade="A"
+  fi
+
+  echo ""
+  echo "📊 [Sentinel] $(sentinel_msg stats_header)"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "  Session: ${start_time:-unknown}"
+  echo "  ✅ Checks passed: ${checks}"
+  echo "  ⛔ Blocks (prevented): ${blocks}"
+  echo "  ⚠️  Warnings issued: ${warnings}"
+  echo "  📈 Quality Score: ${score}/100 (${grade})"
+
+  # Top patterns detected
+  local top_patterns
+  top_patterns=$(jq -r '.patterns | to_entries | sort_by(-.value) | .[:5][] | "    \(.key): \(.value)x"' "$stats_file" 2>/dev/null)
+  if [[ -n "$top_patterns" ]]; then
+    echo ""
+    echo "  Top patterns caught:"
+    echo "$top_patterns"
+  fi
+
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+}

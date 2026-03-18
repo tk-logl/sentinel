@@ -131,7 +131,10 @@ if [[ -n "$VIOLATIONS" ]]; then
   echo -e "Violations:\n${VIOLATIONS}"
   echo "Every function must have a real implementation. No stubs, no deferred work."
   echo "→ Implement the actual logic, then retry."
+  sentinel_stats_increment "blocks"
+  sentinel_stats_increment "pattern_dummy_code"
   exit 2
 fi
 
+sentinel_stats_increment "checks"
 exit 0

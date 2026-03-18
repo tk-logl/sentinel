@@ -7,13 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-03-18
+
 ### Added
+- **i18n message system** — auto-detects locale (ko/ja/en), `sentinel_msg()` for localized output
+- **Usage statistics tracking** — `.sentinel/stats.json` tracks checks/blocks/warnings per session
+- **Session quality report** — quality score (A+ to F), top patterns, shown on Stop hook
+- **TS/JS deep analysis patterns** — 10 new: unused imports, `any` type, `==` vs `===`, `var`, `eval()`, innerHTML/XSS, Promise without catch, useEffect cleanup, console.log, @ts-ignore
+- **Interactive onboarding** — `/sentinel:init` detects project type, suggests config, asks preferences
 - `sentinel_sanitize()` utility in `_common.sh` for terminal escape injection prevention
 - JSON injection protection in `error-logger.sh` (uses `jq --arg` instead of string interpolation)
-- Automated test suite (`tests/test-hooks.sh`)
-- GitHub Actions CI workflow
-- Version check mechanism in `session-init.sh`
+- Automated test suite (`tests/test-hooks.sh`) — 26 tests covering all 13 hooks
+- GitHub Actions CI workflow (shellcheck + multi-OS tests + JSON validation + structure checks)
+- Version check mechanism in `session-init.sh` (GitHub API, 24h cache)
 - `CHANGELOG.md`
+
+### Fixed
+- ShellCheck warnings: SC2034 (unused vars), SC2144 (glob in -f), SC2155 (declare/assign)
+- Stats auto-reset on session start (prevents stale data)
 
 ### Security
 - Fixed JSON injection vulnerability in error-logger.sh log entries
@@ -78,7 +89,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Configuration** — `config/sentinel.json` with per-hook enforcement toggles
 - MIT License
 
-[Unreleased]: https://github.com/tk-logl/sentinel/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/tk-logl/sentinel/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/tk-logl/sentinel/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/tk-logl/sentinel/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/tk-logl/sentinel/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/tk-logl/sentinel/releases/tag/v1.0.0

@@ -140,6 +140,7 @@ if [[ -n "$WARNINGS" ]]; then
   echo ""
   echo -e "$WARNINGS"
   echo "These are warnings — review and fix if applicable."
+  sentinel_stats_increment "warnings"
 fi
 
 exit 0

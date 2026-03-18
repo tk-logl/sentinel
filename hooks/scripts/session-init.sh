@@ -177,4 +177,11 @@ else
 fi
 echo ""
 
+# Reset session stats for new session
+if [[ -n "$PROJECT_ROOT" ]]; then
+  mkdir -p "${PROJECT_ROOT}/.sentinel"
+  cat > "${PROJECT_ROOT}/.sentinel/stats.json" << 'STATS_EOF'
+{"session_start":"","checks":0,"blocks":0,"warnings":0,"patterns":{}}
+STATS_EOF
+fi
 exit 0

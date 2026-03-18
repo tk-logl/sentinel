@@ -21,6 +21,7 @@ if echo "$COMMAND" | grep -qP '\bbrew\s+(install|uninstall|upgrade|tap)'; then
   if [[ "$(uname)" == "Linux" ]]; then
     echo "⛔ [Sentinel Env-Safety] 'brew' is not available on Linux"
     echo "  Use apt, pip, npm, or the appropriate package manager."
+    sentinel_stats_increment "blocks"
     exit 2
   fi
 fi
@@ -31,6 +32,7 @@ if echo "$COMMAND" | grep -qP '(?<!\w)python(?!3)\s' ; then
   if ! echo "$COMMAND" | grep -qP 'python3|/usr/bin/env python|which python|python --version'; then
     echo "⛔ [Sentinel Env-Safety] Use 'python3' instead of 'python'"
     echo "  On modern systems, 'python' may not exist or point to Python 2."
+    sentinel_stats_increment "blocks"
     exit 2
   fi
 fi
@@ -41,6 +43,7 @@ if echo "$COMMAND" | grep -qP 'rm\s+(-rf|-fr|--recursive)\s+(/\s*$|/\s+|~/|\./?\
   echo "  Target: $(sentinel_sanitize "$(echo "$COMMAND" | grep -oP 'rm\s+\S+\s+\S+')")"
   echo "  Never delete root, home, or system directories."
   echo "  If you need to clean up, specify exact paths."
+  sentinel_stats_increment "blocks"
   exit 2
 fi
 
@@ -49,7 +52,7 @@ if echo "$COMMAND" | grep -qP 'pip3?\s+install(?!.*--break-system-packages)(?!.*
   # Check if we're in a venv
   if [[ -z "$VIRTUAL_ENV" ]]; then
     # Check if system is externally managed (Ubuntu 24.04+)
-    if [[ -f /usr/lib/python3*/EXTERNALLY-MANAGED ]] 2>/dev/null; then
+    if compgen -G "/usr/lib/python3*/EXTERNALLY-MANAGED" >/dev/null 2>&1; then
       echo "⚠️ [Sentinel Env-Safety] pip install without --break-system-packages"
       echo "  This system uses externally managed Python (Ubuntu 24.04+)."
       echo "  Add --break-system-packages flag, or use a virtual environment."
@@ -62,6 +65,7 @@ if echo "$COMMAND" | grep -qP 'git\s+(commit|push|merge)\s+.*--no-verify'; then
   echo "⛔ [Sentinel Env-Safety] --no-verify detected — bypassing safety hooks"
   echo "  Pre-commit hooks exist for a reason. Fix the underlying issue instead."
   echo "  If a hook is broken, fix the hook — don't skip it."
+  sentinel_stats_increment "blocks"
   exit 2
 fi
 

@@ -104,6 +104,8 @@ if [[ "$HEADER_EXISTS" == "false" ]]; then
   esac
   echo ""
   echo "  Use /sentinel:header $(basename "$FILE_PATH") to generate one."
+  sentinel_stats_increment "warnings"
+  sentinel_stats_increment "pattern_missing_header"
 fi
 
 exit 0

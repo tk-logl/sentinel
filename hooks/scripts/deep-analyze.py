@@ -134,7 +134,6 @@ def _check_unsafe_calls(node: ast.Call, violations: list[str]) -> None:
                 url_arg = node.args[0]
                 safe_url = False
                 if isinstance(url_arg, ast.Name):
-                    # UPPER_CASE or *_URL/*_url = config constant, not user input
                     if url_arg.id.isupper() or url_arg.id.endswith(("_URL", "_url", "_URI", "_uri", "_endpoint")):
                         safe_url = True
                 if not safe_url:
@@ -149,7 +148,6 @@ def analyze_python_regex(source: str) -> list[str]:
         if re.match(r"^global\s+\w+", stripped):
             violations.append(f"L{i}: 'global' keyword — shared mutable state risks race conditions [Pattern #17]")
         if re.match(r"^\s*def\s+[a-z]+[A-Z]", stripped):
-            # Allow known framework methods (unittest setUp/tearDown, etc.)
             fn_name = re.search(r"def\s+(\w+)", stripped)
             known_camel = {"setUp", "tearDown", "setUpClass", "tearDownClass", "setUpModule",
                           "tearDownModule", "addCleanup", "doCleanups", "skipTest",
@@ -168,7 +166,6 @@ def analyze_python_regex(source: str) -> list[str]:
         if re.search(r"tempfile\.(mktemp|mkdtemp|NamedTemporaryFile)\(", stripped):
             if "delete=True" not in stripped and "with " not in stripped:
                 violations.append(f"L{i}: Temp file without cleanup — use with or delete= [Pattern #43]")
-        # #29 Command Injection: shell=True with string formatting
         if re.search(r"subprocess\.\w+\(.*shell\s*=\s*True", stripped):
             if re.search(r'f["\'\']|\.format\(|%\s', stripped):
                 violations.append(f"L{i}: shell=True + string formatting — use subprocess with list args [Pattern #29]")
@@ -178,8 +175,26 @@ def analyze_python_regex(source: str) -> list[str]:
 def analyze_typescript_regex(source: str) -> list[str]:
     violations = []
     lines = source.split("\n")
+    imported_names: dict[str, int] = {}
+    used_in_code: set[str] = set()
+
     for i, line in enumerate(lines, 1):
         stripped = line.strip()
+        import_match = re.match(r"import\s+\{([^}]+)\}\s+from", stripped)
+        if import_match:
+            for name in import_match.group(1).split(","):
+                clean = name.strip().split(" as ")[-1].strip()
+                if clean:
+                    imported_names[clean] = i
+            continue
+        default_import = re.match(r"import\s+(\w+)\s+from", stripped)
+        if default_import:
+            imported_names[default_import.group(1)] = i
+            continue
+        for token in re.findall(r"\b([A-Za-z_]\w*)\b", stripped):
+            used_in_code.add(token)
+        if re.match(r"^\s*//", stripped) or re.match(r"^\s*\*", stripped):
+            continue
         if re.match(r"^\s*async\s+function\s+\w+|^\s*\w+\s*=\s*async\s*\(", stripped):
             block = "\n".join(lines[i:i + 10])
             if re.search(r'\btry\b', block) is None and re.search(r'\bcatch\b', block) is None:
@@ -188,12 +203,49 @@ def analyze_typescript_regex(source: str) -> list[str]:
             if "require(" not in stripped and "import" not in stripped:
                 violations.append(f"L{i}: snake_case in TypeScript — use camelCase [Pattern #25]")
         match = re.search(r"(?:if|return|===?|!==?|>=?|<=?)\s*(\d{3,})\b", stripped)
-        if match and not re.match(r"^\s*//", stripped):
+        if match:
             num = match.group(1)
             if num not in ("100", "200", "201", "204", "301", "302", "400", "401", "403", "404", "409", "429", "500"):
                 violations.append(f"L{i}: Magic number {num} — extract to named constant [Pattern #37]")
         if re.search(r'"/usr/|"/opt/|"C:\\\\', stripped):
             violations.append(f"L{i}: Hardcoded system path [Pattern #46]")
+        # Loose equality
+        if re.search(r"[^!=]==(?!=)", stripped) and not re.search(r"null\s*==\s*|==\s*null", stripped):
+            violations.append(f"L{i}: == instead of === — use strict equality [Pattern #41]")
+        # var usage
+        if re.match(r"^\s*var\s+\w+", stripped):
+            violations.append(f"L{i}: 'var' — prefer 'const' or 'let' [Pattern #42]")
+        # eval
+        if re.search(r"\beval\s*\(", stripped):
+            violations.append(f"L{i}: eval() is dangerous — use safer alternatives [Pattern #29]")
+        # XSS
+        if re.search(r"\.innerHTML\s*=|dangerouslySetInnerHTML", stripped):
+            violations.append(f"L{i}: innerHTML/dangerouslySetInnerHTML — sanitize first [Pattern #28 XSS]")
+        # Promise without catch
+        if re.search(r"\.then\s*\(", stripped) and not re.search(r"\.catch\s*\(", stripped):
+            block = "\n".join(lines[i:i + 3])
+            if ".catch(" not in block:
+                violations.append(f"L{i}: .then() without .catch() — handle rejection [Pattern #15]")
+        # useEffect cleanup
+        if re.search(r"useEffect\s*\(\s*\(\s*\)\s*=>", stripped):
+            block = "\n".join(lines[i:i + 15])
+            if re.search(r"(addEventListener|setInterval|setTimeout|subscribe)", block):
+                if "return" not in block:
+                    violations.append(f"L{i}: useEffect with listener but no cleanup [Pattern #19]")
+        # console.log
+        if re.search(r"^\s*console\.(log|debug|info)\(", stripped):
+            violations.append(f"L{i}: console.log() — remove or use logger [Pattern #6]")
+        # any type
+        if re.search(r":\s*any\b(?!\w)", stripped):
+            violations.append(f"L{i}: 'any' type — use specific type [Pattern #9]")
+        # ts-ignore
+        if re.search(r"@ts-ignore\s*$|@ts-nocheck", stripped):
+            violations.append(f"L{i}: @ts-ignore without reason — fix the type [Pattern #10]")
+    # Unused imports
+    for name, lineno in imported_names.items():
+        if name not in used_in_code and name != "_" and not name.startswith("_"):
+            if name not in ("React", "type", "interface"):
+                violations.append(f"L{lineno}: Unused import '{name}' [Pattern #24 Dead Code]")
     return violations
 
 

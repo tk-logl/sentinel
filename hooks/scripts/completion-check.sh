@@ -178,4 +178,6 @@ if [[ -z "$CRITICAL" && -z "$WARNINGS" ]]; then
   echo "  Evidence required: test output, command result, or user confirmation."
 fi
 
+# Session quality report (shows when 3+ checks happened)
+sentinel_stats_report
 exit 0

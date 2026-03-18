@@ -58,7 +58,7 @@ if [[ "$TOOL_NAME" == "Edit" ]]; then
 
     # Warn on large replacements
     if [[ $OLD_LINES -gt 15 ]]; then
-      WARNINGS="${WARNINGS}⚠️  Large edit: replacing ${OLD_LINES} lines\n"
+      WARNINGS="${WARNINGS}⚠️  Large edit: replacing ${OLD_LINES} lines → ${NEW_LINES} lines\n"
       WARNINGS="${WARNINGS}   Break this into smaller, focused edits (one logical change per Edit call).\n\n"
     fi
 
@@ -81,6 +81,8 @@ if [[ -n "$WARNINGS" ]]; then
   echo ""
   echo -e "$WARNINGS"
   echo "Surgical Change Rule: smallest diff possible. Add before replace. Grep before delete."
+  sentinel_stats_increment "warnings"
+  sentinel_stats_increment "pattern_large_edit"
 fi
 
 exit 0

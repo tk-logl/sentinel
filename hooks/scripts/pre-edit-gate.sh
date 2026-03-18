@@ -59,6 +59,7 @@ if [[ ! -f "$TASK_FILE" ]]; then
   echo ""
   echo "This is your blueprint. Fill it with real analysis, not placeholders."
   echo "→ Write .sentinel/current-task.json first, then edit source code."
+  sentinel_stats_increment "blocks"
   exit 2
 fi
 
@@ -88,8 +89,10 @@ if [[ -n "$MISSING" ]]; then
   echo ""
   echo -e "Missing:\n${MISSING}"
   echo "→ Update .sentinel/current-task.json with all fields, then retry."
+  sentinel_stats_increment "blocks"
   exit 2
 fi
 
+sentinel_stats_increment "checks"
 echo "✅ [Sentinel Pre-Edit Gate] Checklist passed: ${TASK_ID}"
 exit 0
