@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/_common.sh"
 sentinel_require_jq "file-header-check"
 sentinel_require_pcre "file-header-check"
-sentinel_check_enabled "file_header_check"
+sentinel_compat_check "file_header_check"
 
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
@@ -15,6 +15,10 @@ TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
 if [[ "$TOOL_NAME" != "Edit" && "$TOOL_NAME" != "Write" ]]; then
   exit 0
 fi
+
+# Check per-item action
+ACTION=$(sentinel_get_action "editDiscipline" "warn_missing_file_header" "warn")
+[[ "$ACTION" == "off" ]] && exit 0
 
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 [[ -z "$FILE_PATH" || ! -f "$FILE_PATH" ]] && exit 0

@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/_common.sh"
 sentinel_require_jq "pre-edit-gate" "blocking"
 sentinel_require_pcre "pre-edit-gate" "blocking"
-sentinel_check_enabled "pre_edit_gate"
+sentinel_compat_check "pre_edit_gate"
 
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
@@ -31,6 +31,10 @@ PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 
 TASK_FILE="${PROJECT_ROOT}/.sentinel/current-task.json"
 
+# Check per-item action for pre-edit checklist requirement
+ACTION=$(sentinel_get_action "workflow" "require_pre_edit_checklist")
+[[ "$ACTION" == "off" ]] && { sentinel_stats_increment "checks"; exit 0; }
+
 if [[ ! -f "$TASK_FILE" ]]; then
   echo "⛔ [Sentinel Pre-Edit Gate] .sentinel/current-task.json not found"
   echo ""
@@ -48,8 +52,12 @@ if [[ ! -f "$TASK_FILE" ]]; then
   echo ""
   echo "This is your blueprint. Fill it with real analysis, not placeholders."
   echo "→ Write .sentinel/current-task.json first, then edit source code."
-  sentinel_stats_increment "blocks"
-  exit 2
+  if [[ "$ACTION" == "block" ]]; then
+    sentinel_stats_increment "blocks"
+    exit 2
+  else
+    sentinel_stats_increment "warnings"
+  fi
 fi
 
 # Validate required fields — single jq call for performance (avoids 7 forks)
@@ -78,8 +86,12 @@ if [[ -n "$MISSING" ]]; then
   echo ""
   echo -e "Missing:\n${MISSING}"
   echo "→ Update .sentinel/current-task.json with all fields, then retry."
-  sentinel_stats_increment "blocks"
-  exit 2
+  if [[ "$ACTION" == "block" ]]; then
+    sentinel_stats_increment "blocks"
+    exit 2
+  else
+    sentinel_stats_increment "warnings"
+  fi
 fi
 
 sentinel_stats_increment "checks"

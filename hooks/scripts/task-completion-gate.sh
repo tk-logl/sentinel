@@ -7,7 +7,11 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/_common.sh"
 sentinel_require_jq "task-completion-gate"
-sentinel_check_enabled "task_completion_gate"
+sentinel_compat_check "task_completion_gate"
+
+# Check per-item action
+ACTION=$(sentinel_get_action "workflow" "task_completion_evidence" "warn")
+[[ "$ACTION" == "off" ]] && exit 0
 
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)

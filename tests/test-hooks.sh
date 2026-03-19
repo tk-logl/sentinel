@@ -929,6 +929,115 @@ jq -r '.files["src/service.py"].functions["Worker.process"].has_test' "$DEEP_PRO
 
 # ===================================================================
 printf "\n${BOLD}========================================${RESET}\n"
+# ═══════════════════════════════════════
+section "31. sentinel_get_action — mode resolution"
+# ═══════════════════════════════════════
+
+GA_PROJ="${TMPDIR_ROOT}/ga-proj"
+mkdir -p "$GA_PROJ/.sentinel"
+git -C "$GA_PROJ" init -q 2>/dev/null
+PLUGIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Test 1: Legacy config (no mode/categories) → uses fallback
+cat > "$GA_PROJ/.sentinel/config.json" << 'CONF'
+{"enforcement":{"deny_dummy":true}}
+CONF
+
+RESULT=$(cd "$GA_PROJ" && export SENTINEL_PLUGIN_ROOT="$PLUGIN_ROOT" SCRIPT_DIR="$PLUGIN_ROOT/hooks/scripts" && source "$PLUGIN_ROOT/hooks/scripts/_common.sh" 2>/dev/null && sentinel_get_action "codeQuality" "block_standalone_pass" "block")
+[[ "$RESULT" == "block" ]] && _pass "legacy config -> fallback=block" || _fail "legacy config -> fallback=block" "got=$RESULT"
+
+RESULT=$(cd "$GA_PROJ" && export SENTINEL_PLUGIN_ROOT="$PLUGIN_ROOT" SCRIPT_DIR="$PLUGIN_ROOT/hooks/scripts" && source "$PLUGIN_ROOT/hooks/scripts/_common.sh" 2>/dev/null && sentinel_get_action "editDiscipline" "warn_large_edits" "warn")
+[[ "$RESULT" == "warn" ]] && _pass "legacy config -> fallback=warn" || _fail "legacy config -> fallback=warn" "got=$RESULT"
+
+# Test 2: v1.5.0 config with mode → reads from mode-defaults.json
+cat > "$GA_PROJ/.sentinel/config.json" << 'CONF'
+{"mode":"relaxed"}
+CONF
+
+RESULT=$(cd "$GA_PROJ" && export SENTINEL_PLUGIN_ROOT="$PLUGIN_ROOT" SCRIPT_DIR="$PLUGIN_ROOT/hooks/scripts" && source "$PLUGIN_ROOT/hooks/scripts/_common.sh" 2>/dev/null && sentinel_reset_action_cache && sentinel_get_action "codeQuality" "block_standalone_pass")
+[[ "$RESULT" == "warn" ]] && _pass "relaxed mode -> block_standalone_pass=warn" || _fail "relaxed mode -> block_standalone_pass=warn" "got=$RESULT"
+
+RESULT=$(cd "$GA_PROJ" && export SENTINEL_PLUGIN_ROOT="$PLUGIN_ROOT" SCRIPT_DIR="$PLUGIN_ROOT/hooks/scripts" && source "$PLUGIN_ROOT/hooks/scripts/_common.sh" 2>/dev/null && sentinel_reset_action_cache && sentinel_get_action "codeQuality" "block_todo_comments")
+[[ "$RESULT" == "off" ]] && _pass "relaxed mode -> block_todo_comments=off" || _fail "relaxed mode -> block_todo_comments=off" "got=$RESULT"
+
+# Test 3: v1.5.0 config with per-item override
+cat > "$GA_PROJ/.sentinel/config.json" << 'CONF'
+{"mode":"standard","categories":{"codeQuality":{"block_todo_comments":"off"}}}
+CONF
+
+RESULT=$(cd "$GA_PROJ" && export SENTINEL_PLUGIN_ROOT="$PLUGIN_ROOT" SCRIPT_DIR="$PLUGIN_ROOT/hooks/scripts" && source "$PLUGIN_ROOT/hooks/scripts/_common.sh" 2>/dev/null && sentinel_reset_action_cache && sentinel_get_action "codeQuality" "block_todo_comments")
+[[ "$RESULT" == "off" ]] && _pass "per-item override -> block_todo_comments=off" || _fail "per-item override -> block_todo_comments=off" "got=$RESULT"
+
+RESULT=$(cd "$GA_PROJ" && export SENTINEL_PLUGIN_ROOT="$PLUGIN_ROOT" SCRIPT_DIR="$PLUGIN_ROOT/hooks/scripts" && source "$PLUGIN_ROOT/hooks/scripts/_common.sh" 2>/dev/null && sentinel_reset_action_cache && sentinel_get_action "codeQuality" "block_standalone_pass")
+[[ "$RESULT" == "block" ]] && _pass "standard mode non-overridden -> block" || _fail "standard mode non-overridden -> block" "got=$RESULT"
+
+# Test 4: paranoid mode
+cat > "$GA_PROJ/.sentinel/config.json" << 'CONF'
+{"mode":"paranoid"}
+CONF
+
+RESULT=$(cd "$GA_PROJ" && export SENTINEL_PLUGIN_ROOT="$PLUGIN_ROOT" SCRIPT_DIR="$PLUGIN_ROOT/hooks/scripts" && source "$PLUGIN_ROOT/hooks/scripts/_common.sh" 2>/dev/null && sentinel_reset_action_cache && sentinel_get_action "codeQuality" "warn_ssl_bypass")
+[[ "$RESULT" == "block" ]] && _pass "paranoid mode -> warn_ssl_bypass=block" || _fail "paranoid mode -> warn_ssl_bypass=block" "got=$RESULT"
+
+# Test 5: strict mode
+cat > "$GA_PROJ/.sentinel/config.json" << 'CONF'
+{"mode":"strict"}
+CONF
+
+RESULT=$(cd "$GA_PROJ" && export SENTINEL_PLUGIN_ROOT="$PLUGIN_ROOT" SCRIPT_DIR="$PLUGIN_ROOT/hooks/scripts" && source "$PLUGIN_ROOT/hooks/scripts/_common.sh" 2>/dev/null && sentinel_reset_action_cache && sentinel_get_action "workflow" "require_pre_edit_checklist")
+[[ "$RESULT" == "block" ]] && _pass "strict mode -> require_pre_edit_checklist=block" || _fail "strict mode -> require_pre_edit_checklist=block" "got=$RESULT"
+
+# ═══════════════════════════════════════
+section "32. env-safety — new v1.5.0 checks"
+# ═══════════════════════════════════════
+
+ENV_HOOK="$PLUGIN_ROOT/hooks/scripts/env-safety.sh"
+
+# Protected branch push
+RESULT=$(echo '{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}' | bash "$ENV_HOOK" 2>&1; echo "EXIT:$?")
+echo "$RESULT" | grep -q "EXIT:2" && _pass "push to main -> blocked" || _fail "push to main" "exit=$(echo "$RESULT" | grep -oP 'EXIT:\K\d+')"
+
+# git clean -f
+RESULT=$(echo '{"tool_name":"Bash","tool_input":{"command":"git clean -fd"}}' | bash "$ENV_HOOK" 2>&1; echo "EXIT:$?")
+echo "$RESULT" | grep -q "EXIT:2" && _pass "git clean -fd -> blocked" || _fail "git clean" "exit=$(echo "$RESULT" | grep -oP 'EXIT:\K\d+')"
+
+# git checkout -- . (bulk discard)
+RESULT=$(echo '{"tool_name":"Bash","tool_input":{"command":"git checkout -- ."}}' | bash "$ENV_HOOK" 2>&1; echo "EXIT:$?")
+echo "$RESULT" | grep -q "EXIT:2" && _pass "git checkout -- . -> blocked" || _fail "checkout discard" "exit=$(echo "$RESULT" | grep -oP 'EXIT:\K\d+')"
+
+# Destructive SQL
+RESULT=$(echo '{"tool_name":"Bash","tool_input":{"command":"psql -c \"DROP TABLE users;\""}}' | bash "$ENV_HOOK" 2>&1; echo "EXIT:$?")
+echo "$RESULT" | grep -q "EXIT:2" && _pass "DROP TABLE -> blocked" || _fail "DROP TABLE" "exit=$(echo "$RESULT" | grep -oP 'EXIT:\K\d+')"
+
+# Branch deletion of protected branch
+RESULT=$(echo '{"tool_name":"Bash","tool_input":{"command":"git branch -D main"}}' | bash "$ENV_HOOK" 2>&1; echo "EXIT:$?")
+echo "$RESULT" | grep -q "EXIT:2" && _pass "delete main branch -> blocked" || _fail "branch delete" "exit=$(echo "$RESULT" | grep -oP 'EXIT:\K\d+')"
+
+# Feature branch push (should be allowed)
+RESULT=$(echo '{"tool_name":"Bash","tool_input":{"command":"git push origin feature/my-branch"}}' | bash "$ENV_HOOK" 2>&1; echo "EXIT:$?")
+echo "$RESULT" | grep -q "EXIT:0" && _pass "push feature branch -> allowed" || _fail "feature push" "exit=$(echo "$RESULT" | grep -oP 'EXIT:\K\d+')"
+
+# Non-destructive SQL (should be allowed)
+RESULT=$(echo '{"tool_name":"Bash","tool_input":{"command":"psql -c \"SELECT * FROM users;\""}}' | bash "$ENV_HOOK" 2>&1; echo "EXIT:$?")
+echo "$RESULT" | grep -q "EXIT:0" && _pass "SELECT query -> allowed" || _fail "SELECT" "exit=$(echo "$RESULT" | grep -oP 'EXIT:\K\d+')"
+
+# ═══════════════════════════════════════
+section "33. per-item action — deny-dummy with mode override"
+# ═══════════════════════════════════════
+
+MODE_PROJ="${TMPDIR_ROOT}/mode-proj"
+mkdir -p "$MODE_PROJ/.sentinel" "$MODE_PROJ/src"
+git -C "$MODE_PROJ" init -q 2>/dev/null
+touch "$MODE_PROJ/src/app.py"
+
+# relaxed mode: TODO comments should be allowed (off)
+cat > "$MODE_PROJ/.sentinel/config.json" << 'CONF'
+{"mode":"relaxed"}
+CONF
+
+RESULT=$(cd "$MODE_PROJ" && echo '{"tool_name":"Edit","tool_input":{"file_path":"'"$MODE_PROJ"'/src/app.py","new_string":"# TODO: add error handling\ndef handler():\n    return process()"}}' | SENTINEL_PLUGIN_ROOT="$PLUGIN_ROOT" bash "$PLUGIN_ROOT/hooks/scripts/deny-dummy.sh" 2>&1; echo "EXIT:$?")
+echo "$RESULT" | grep -q "EXIT:0" && _pass "relaxed mode: TODO comment -> allowed" || _fail "relaxed TODO" "exit=$(echo "$RESULT" | grep -oP 'EXIT:\K\d+')"
+
 printf "${BOLD}Results: %d total | ${GREEN}%d passed${RESET} | ${RED}%d failed${RESET}\n" \
   "$TOTAL_COUNT" "$PASS_COUNT" "$FAIL_COUNT"
 printf "${BOLD}========================================${RESET}\n\n"

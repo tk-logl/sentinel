@@ -1,6 +1,19 @@
 {
   "language": "auto",
-  "source_extensions": ["py", "ts", "tsx", "js", "jsx", "go", "rs", "java", "c", "cpp", "svelte", "vue"],
+  "source_extensions": [
+    "py",
+    "ts",
+    "tsx",
+    "js",
+    "jsx",
+    "go",
+    "rs",
+    "java",
+    "c",
+    "cpp",
+    "svelte",
+    "vue"
+  ],
   "skip_patterns": [
     "**/test_*",
     "**/*.test.*",
@@ -48,7 +61,32 @@
   },
   "preImplGate": {
     "taskFile": ".sentinel/current-task.json",
-    "requiredFields": ["item_id", "why", "approach", "impact_files", "blast_radius", "verify_command"],
+    "requiredFields": [
+      "item_id",
+      "why",
+      "approach",
+      "impact_files",
+      "blast_radius",
+      "verify_command"
+    ],
     "injectSpecOnAllow": true
+  },
+  "mode": "standard",
+  "protected_branches": [
+    "main",
+    "master",
+    "develop"
+  ],
+  "_schema_version": "1.5.0",
+  "_categories_schema": {
+    "_comment": "Per-item overrides go in .sentinel/config.json under categories.{category}.{item_key}",
+    "example": {
+      "codeQuality": {
+        "block_todo_comments": "off"
+      },
+      "safetyNet": {
+        "block_push_protected_branch": "block"
+      }
+    }
   }
 }

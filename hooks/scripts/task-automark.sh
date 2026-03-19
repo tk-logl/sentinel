@@ -6,7 +6,7 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/_common.sh"
 sentinel_require_jq "task-automark"
-sentinel_check_enabled "task_automark"
+sentinel_compat_check "task_automark"
 
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
@@ -21,6 +21,10 @@ AUTO_MARK=$(sentinel_read_config '.taskList.autoMarkOnCommit' 'true')
 [[ "$AUTO_MARK" != "true" ]] && exit 0
 
 # Only trigger on git commit commands
+# Check per-item action
+ACTION=$(sentinel_get_action "workflow" "task_automark_on_commit" "on")
+[[ "$ACTION" == "off" ]] && exit 0
+
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
 echo "$COMMAND" | grep -qP '^\s*git\s+commit\b' || exit 0
 

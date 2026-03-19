@@ -7,7 +7,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/_common.sh"
 sentinel_require_jq "completion-check"
 sentinel_require_pcre "completion-check"
-sentinel_check_enabled "completion_check"
+sentinel_compat_check "completion_check"
+
+# Check per-item action
+ACTION=$(sentinel_get_action "workflow" "completion_check" "warn")
+[[ "$ACTION" == "off" ]] && exit 0
 
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 [[ -z "$PROJECT_ROOT" ]] && exit 0

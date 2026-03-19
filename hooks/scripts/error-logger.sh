@@ -7,7 +7,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/_common.sh"
 sentinel_require_jq "error-logger"
 sentinel_require_pcre "error-logger"
-sentinel_check_enabled "error_logger"
+sentinel_compat_check "error_logger"
+
+# Check per-item action
+ACTION=$(sentinel_get_action "analysis" "error_logging" "on")
+[[ "$ACTION" == "off" ]] && exit 0
 
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)

@@ -429,6 +429,163 @@ sentinel_should_skip() {
   return 1
 }
 
+
+# ─── Per-Item Action Resolution (v1.5.0) ───
+# 3-tier resolution: project override → mode defaults → "standard" fallback
+# Returns: "block" | "warn" | "on" | "off"
+# Usage: action=$(sentinel_get_action "codeQuality" "block_standalone_pass")
+#
+# Resolution order:
+#   1. Project config .sentinel/config.json → categories.<category>.<item_key>
+#   2. Mode defaults (from config "mode" field) → mode-defaults.json lookup
+#   3. Ultimate fallback: "standard" mode from mode-defaults.json
+#   4. If nothing found: "block" (safe default)
+
+_sentinel_mode_cache=""
+_sentinel_project_config_cache=""
+_sentinel_defaults_file_cache=""
+
+sentinel_get_action() {
+  local category="$1" item_key="$2" fallback="${3:-block}"
+  [[ -z "$category" || -z "$item_key" ]] && echo "off" && return 0
+  [[ "$SENTINEL_NO_JQ" == "1" ]] && echo "$fallback" && return 0  # safe default when jq missing
+
+  # --- Locate project config (cached) ---
+  if [[ -z "$_sentinel_project_config_cache" ]]; then
+    local project_root
+    project_root=$(git rev-parse --show-toplevel 2>/dev/null)
+    if [[ -n "$project_root" && -f "${project_root}/.sentinel/config.json" ]]; then
+      _sentinel_project_config_cache="${project_root}/.sentinel/config.json"
+    else
+      _sentinel_project_config_cache="__none__"
+    fi
+  fi
+
+  # --- Locate mode-defaults.json (cached) ---
+  if [[ -z "$_sentinel_defaults_file_cache" ]]; then
+    if [[ -n "$SENTINEL_PLUGIN_ROOT" && -f "${SENTINEL_PLUGIN_ROOT}/config/mode-defaults.json" ]]; then
+      _sentinel_defaults_file_cache="${SENTINEL_PLUGIN_ROOT}/config/mode-defaults.json"
+    elif [[ -n "$SCRIPT_DIR" && -f "${SCRIPT_DIR}/../../config/mode-defaults.json" ]]; then
+      _sentinel_defaults_file_cache="${SCRIPT_DIR}/../../config/mode-defaults.json"
+    else
+      _sentinel_defaults_file_cache="__none__"
+    fi
+  fi
+
+  # --- Tier 1: Project config per-item override ---
+  if [[ "$_sentinel_project_config_cache" != "__none__" ]]; then
+    local override
+    override=$(jq -r ".categories.${category}.${item_key} // empty" "$_sentinel_project_config_cache" 2>/dev/null)
+    if [[ -n "$override" && "$override" != "null" ]]; then
+      echo "$override"
+      return 0
+    fi
+  fi
+
+  # --- Determine mode (cached) ---
+  # If project has no .mode and no .categories in config, it's a legacy (v1.4.0) config.
+  # Legacy configs don't use mode-defaults.json → fallback to "block" (all checks active).
+  if [[ -z "$_sentinel_mode_cache" ]]; then
+    _sentinel_mode_cache="__legacy__"
+    if [[ "$_sentinel_project_config_cache" != "__none__" ]]; then
+      local cfg_mode has_cats
+      cfg_mode=$(jq -r '.mode // empty' "$_sentinel_project_config_cache" 2>/dev/null)
+      has_cats=$(jq -r 'if .categories then "yes" else "no" end' "$_sentinel_project_config_cache" 2>/dev/null)
+      if [[ -n "$cfg_mode" && "$cfg_mode" != "null" ]]; then
+        _sentinel_mode_cache="$cfg_mode"
+      elif [[ "$has_cats" == "yes" ]]; then
+        _sentinel_mode_cache="standard"
+      fi
+      # else: stays "__legacy__" — won't consult mode-defaults.json
+    fi
+  fi
+
+  # --- Tier 2: Mode defaults lookup (only for v1.5.0+ configs) ---
+  if [[ "$_sentinel_mode_cache" != "__legacy__" && "$_sentinel_defaults_file_cache" != "__none__" ]]; then
+    local default_action
+    default_action=$(jq -r ".${_sentinel_mode_cache}.${category}.${item_key} // empty" "$_sentinel_defaults_file_cache" 2>/dev/null)
+    if [[ -n "$default_action" && "$default_action" != "null" ]]; then
+      echo "$default_action"
+      return 0
+    fi
+  fi
+
+  # --- Tier 3: Fallback to "standard" if current mode didn't have this item ---
+  if [[ "$_sentinel_mode_cache" != "__legacy__" && "$_sentinel_mode_cache" != "standard" && "$_sentinel_defaults_file_cache" != "__none__" ]]; then
+    local fallback
+    fallback=$(jq -r ".standard.${category}.${item_key} // empty" "$_sentinel_defaults_file_cache" 2>/dev/null)
+    if [[ -n "$fallback" && "$fallback" != "null" ]]; then
+      echo "$fallback"
+      return 0
+    fi
+  fi
+
+  # --- Ultimate fallback: use caller-specified default ---
+  echo "$fallback"
+  return 0
+}
+
+# Helper: check if action is "block" or "warn" (active enforcement)
+# Usage: if sentinel_is_active "codeQuality" "block_standalone_pass"; then ...
+sentinel_is_active() {
+  local action
+  action=$(sentinel_get_action "$1" "$2")
+  [[ "$action" == "block" || "$action" == "warn" ]]
+}
+
+# Helper: emit violation based on action level
+# Usage: sentinel_emit_violation "codeQuality" "block_standalone_pass" "message" BLOCKS_VAR WARNINGS_VAR
+# Appends to the appropriate variable (block violations vs warning violations)
+sentinel_add_violation() {
+  local category="$1" item_key="$2" message="$3"
+  local action
+  action=$(sentinel_get_action "$category" "$item_key")
+
+  case "$action" in
+    block)
+      # Caller collects blocks — we echo a prefixed line for capture
+      echo "BLOCK:${message}"
+      ;;
+    warn)
+      echo "WARN:${message}"
+      ;;
+    *)
+      # off or on — no violation
+      echo ""
+      ;;
+  esac
+}
+
+# Backward compatibility bridge: old enforcement.* → new per-item system
+# Call at hook start. If old config disables the hook AND no new-style categories exist,
+# exits 0 (skip). If new-style categories exist, defers to sentinel_get_action().
+# Usage: sentinel_compat_check "deny_dummy"
+sentinel_compat_check() {
+  local old_key="$1"
+  [[ -z "$old_key" ]] && return 0
+  [[ "$SENTINEL_NO_JQ" == "1" ]] && return 0
+
+  local project_root
+  project_root=$(git rev-parse --show-toplevel 2>/dev/null)
+
+  # If project config has new-style categories or mode, use new system (skip old check)
+  if [[ -n "$project_root" && -f "${project_root}/.sentinel/config.json" ]]; then
+    local has_new
+    has_new=$(jq -r 'if (.categories or .mode) then "yes" else "no" end' "${project_root}/.sentinel/config.json" 2>/dev/null)
+    [[ "$has_new" == "yes" ]] && return 0
+  fi
+
+  # Fall back to old enforcement toggle check
+  sentinel_check_enabled "$old_key"
+}
+
+# Reset cached values (useful for testing)
+sentinel_reset_action_cache() {
+  _sentinel_mode_cache=""
+  _sentinel_project_config_cache=""
+  _sentinel_defaults_file_cache=""
+}
+
 # ─── Task List Utilities ───
 # Generic task-list management for markdown checklists.
 # Supports auto-detection of task files and configurable ID patterns.

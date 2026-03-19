@@ -1,13 +1,14 @@
 #!/bin/bash
 # Sentinel PreToolUse Hook: Secret Scanner (BLOCKING)
 # Blocks hardcoded secrets/credentials in source code.
+# v1.5.0: Per-item configurable actions (block/warn/off).
 # Exit 2 = DENY | Exit 0 = ALLOW
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/_common.sh"
 sentinel_require_jq "secret-scan" "blocking"
 sentinel_require_pcre "secret-scan" "blocking"
-sentinel_check_enabled "secret_scan"
+sentinel_compat_check "secret_scan"
 
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
@@ -19,15 +20,13 @@ fi
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 [[ -z "$FILE_PATH" ]] && exit 0
 
-# Skip non-source and non-config files
-# Secret scan checks BOTH source code AND config files (broader than sentinel_is_source_file)
+# Secret scan checks BOTH source code AND config files
 EXT="${FILE_PATH##*.}"
 case "$EXT" in
   py|ts|tsx|js|jsx|go|rs|java|c|cpp|svelte|vue|env|yml|yaml|json|toml|ini|cfg) ;;
   *) exit 0 ;;
 esac
 
-# Skip test files, fixtures, config dirs, and user-configured skip patterns
 if sentinel_should_skip "$FILE_PATH"; then exit 0; fi
 
 # Get content
@@ -39,67 +38,106 @@ fi
 
 [[ -z "$CONTENT" ]] && exit 0
 
-VIOLATIONS=""
+BLOCKS=""
+WARNINGS=""
 
-# OpenAI / Stripe secret keys
-if echo "$CONTENT" | grep -qP 'sk-[a-zA-Z0-9-]{20,}'; then
-  # Exclude obvious fake keys
-  if ! echo "$CONTENT" | grep -qP 'sk-(test|fake|dummy|example|placeholder|xxx)'; then
-    VIOLATIONS="${VIOLATIONS}  - OpenAI/Stripe secret key pattern (sk-...)\n"
+# 1. OpenAI / Stripe secret keys
+ACTION=$(sentinel_get_action "security" "block_openai_stripe_keys")
+if [[ "$ACTION" != "off" ]]; then
+  if echo "$CONTENT" | grep -qP 'sk-[a-zA-Z0-9-]{20,}'; then
+    if ! echo "$CONTENT" | grep -qP 'sk-(test|fake|dummy|example|placeholder|xxx)'; then
+      MSG="  - OpenAI/Stripe secret key pattern (sk-...)\n"
+      [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
+    fi
   fi
 fi
 
-# GitHub tokens
-if echo "$CONTENT" | grep -qP '(ghp_|gho_|github_pat_)[a-zA-Z0-9]{20,}'; then
-  VIOLATIONS="${VIOLATIONS}  - GitHub token pattern (ghp_/gho_/github_pat_)\n"
-fi
-
-# Slack tokens
-if echo "$CONTENT" | grep -qP '(xoxb-|xoxp-|xoxs-)[a-zA-Z0-9-]{20,}'; then
-  VIOLATIONS="${VIOLATIONS}  - Slack token pattern (xoxb-/xoxp-)\n"
-fi
-
-# AWS access key
-if echo "$CONTENT" | grep -qP 'AKIA[A-Z0-9]{16}'; then
-  VIOLATIONS="${VIOLATIONS}  - AWS access key pattern (AKIA...)\n"
-fi
-
-# Generic secret patterns (API_KEY="value", SECRET="value", etc.)
-if echo "$CONTENT" | grep -qP '(API_KEY|SECRET_KEY|ACCESS_TOKEN|AUTH_TOKEN|PRIVATE_KEY|PASSWORD|DB_PASSWORD)\s*=\s*["\x27][^"\x27]{8,}["\x27]'; then
-  # Exclude env var references and placeholder values
-  if ! echo "$CONTENT" | grep -qP '(os\.environ|process\.env|getenv|config\(|settings\.|ENV\[|placeholder|example|changeme|your[-_]?\w+[-_]?here)'; then
-    VIOLATIONS="${VIOLATIONS}  - Hardcoded credential assignment (use environment variables)\n"
+# 2. GitHub tokens
+ACTION=$(sentinel_get_action "security" "block_github_tokens")
+if [[ "$ACTION" != "off" ]]; then
+  if echo "$CONTENT" | grep -qP '(ghp_|gho_|github_pat_)[a-zA-Z0-9]{20,}'; then
+    MSG="  - GitHub token pattern (ghp_/gho_/github_pat_)\n"
+    [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
   fi
 fi
 
-# JWT tokens (eyJ prefix = base64 of {"alg":...)
-if echo "$CONTENT" | grep -qP 'eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}'; then
-  if ! echo "$CONTENT" | grep -qP '(test|fake|mock|example|sample).*eyJ|eyJ.*(test|fake|mock)'; then
-    VIOLATIONS="${VIOLATIONS}  - JWT token embedded in source code\n"
+# 3. Slack tokens
+ACTION=$(sentinel_get_action "security" "block_slack_tokens")
+if [[ "$ACTION" != "off" ]]; then
+  if echo "$CONTENT" | grep -qP '(xoxb-|xoxp-|xoxs-)[a-zA-Z0-9-]{20,}'; then
+    MSG="  - Slack token pattern (xoxb-/xoxp-)\n"
+    [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
   fi
 fi
 
-# Google API keys
-if echo "$CONTENT" | grep -qP 'AIza[a-zA-Z0-9_-]{35}'; then
-  VIOLATIONS="${VIOLATIONS}  - Google API key pattern (AIza...)\n"
-fi
-
-# Private keys
-if echo "$CONTENT" | grep -qP 'BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY'; then
-  VIOLATIONS="${VIOLATIONS}  - Private key embedded in source code\n"
-fi
-
-# Database connection strings with passwords
-if echo "$CONTENT" | grep -qP '(postgres|mysql|mongodb|redis)://\w+:[^@]{8,}@'; then
-  if ! echo "$CONTENT" | grep -qP '(localhost|127\.0\.0\.1|example\.com|placeholder|changeme)'; then
-    VIOLATIONS="${VIOLATIONS}  - Database connection string with embedded password\n"
+# 4. AWS access keys
+ACTION=$(sentinel_get_action "security" "block_aws_keys")
+if [[ "$ACTION" != "off" ]]; then
+  if echo "$CONTENT" | grep -qP 'AKIA[A-Z0-9]{16}'; then
+    MSG="  - AWS access key pattern (AKIA...)\n"
+    [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
   fi
 fi
 
-if [[ -n "$VIOLATIONS" ]]; then
+# 5. Generic credentials (API_KEY=, SECRET=, PASSWORD=)
+ACTION=$(sentinel_get_action "security" "block_generic_credentials")
+if [[ "$ACTION" != "off" ]]; then
+  if echo "$CONTENT" | grep -qP '(API_KEY|SECRET_KEY|ACCESS_TOKEN|AUTH_TOKEN|PRIVATE_KEY|PASSWORD|DB_PASSWORD)\s*=\s*["\x27][^"\x27]{8,}["\x27]'; then
+    if ! echo "$CONTENT" | grep -qP '(os\.environ|process\.env|getenv|config\(|settings\.|ENV\[|placeholder|example|changeme|your[-_]?\w+[-_]?here)'; then
+      MSG="  - Hardcoded credential assignment (use environment variables)\n"
+      [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
+    fi
+  fi
+fi
+
+# 6. JWT tokens
+ACTION=$(sentinel_get_action "security" "block_jwt_tokens")
+if [[ "$ACTION" != "off" ]]; then
+  if echo "$CONTENT" | grep -qP 'eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}'; then
+    if ! echo "$CONTENT" | grep -qP '(test|fake|mock|example|sample).*eyJ|eyJ.*(test|fake|mock)'; then
+      MSG="  - JWT token embedded in source code\n"
+      [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
+    fi
+  fi
+fi
+
+# 7. Google API keys
+ACTION=$(sentinel_get_action "security" "block_google_api_keys")
+if [[ "$ACTION" != "off" ]]; then
+  if echo "$CONTENT" | grep -qP 'AIza[a-zA-Z0-9_-]{35}'; then
+    MSG="  - Google API key pattern (AIza...)\n"
+    [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
+  fi
+fi
+
+# 8. Private keys
+ACTION=$(sentinel_get_action "security" "block_private_keys")
+if [[ "$ACTION" != "off" ]]; then
+  if echo "$CONTENT" | grep -qP 'BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY'; then
+    MSG="  - Private key embedded in source code\n"
+    [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
+  fi
+fi
+
+# 9. Database connection strings
+ACTION=$(sentinel_get_action "security" "block_db_connection_strings")
+if [[ "$ACTION" != "off" ]]; then
+  if echo "$CONTENT" | grep -qP '(postgres|mysql|mongodb|redis)://\w+:[^@]{8,}@'; then
+    if ! echo "$CONTENT" | grep -qP '(localhost|127\.0\.0\.1|example\.com|placeholder|changeme)'; then
+      MSG="  - Database connection string with embedded password\n"
+      [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
+    fi
+  fi
+fi
+
+# --- Output ---
+if [[ -n "$BLOCKS" ]]; then
   echo "⛔ [Sentinel Secret-Scan] Hardcoded secrets detected in: $(basename "$FILE_PATH")"
   echo ""
-  echo -e "Found:\n${VIOLATIONS}"
+  echo -e "Found:\n${BLOCKS}"
+  if [[ -n "$WARNINGS" ]]; then
+    echo -e "Warnings:\n${WARNINGS}"
+  fi
   echo ""
   echo "Never hardcode credentials. Use:"
   echo "  Python: os.environ.get('API_KEY') or django-environ"
@@ -109,6 +147,13 @@ if [[ -n "$VIOLATIONS" ]]; then
   sentinel_stats_increment "blocks"
   sentinel_stats_increment "pattern_hardcoded_secret"
   exit 2
+fi
+
+if [[ -n "$WARNINGS" ]]; then
+  echo "⚠️ [Sentinel Secret-Scan] Credential warnings in: $(basename "$FILE_PATH")"
+  echo ""
+  echo -e "Warnings:\n${WARNINGS}"
+  sentinel_stats_increment "warnings"
 fi
 
 sentinel_stats_increment "checks"

@@ -1,13 +1,14 @@
 #!/bin/bash
 # Sentinel PreToolUse Hook: Deny Dummy Code (BLOCKING)
 # Blocks placeholder/stub/debug code from being written.
+# v1.5.0: Per-item configurable actions (block/warn/off).
 # Exit 2 = DENY | Exit 0 = ALLOW
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/_common.sh"
 sentinel_require_jq "deny-dummy" "blocking"
 sentinel_require_pcre "deny-dummy" "blocking"
-sentinel_check_enabled "deny_dummy"
+sentinel_compat_check "deny_dummy"
 
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
@@ -35,37 +36,24 @@ fi
 [[ -z "$CONTENT" ]] && exit 0
 
 # ─── Context Map Integration ───
-# If context-map.json exists, use AST-based classifications to allow
-# intentional noops (teardown, cleanup) and abstract methods.
-# Prevents false positives that regex alone cannot avoid.
 CTXMAP_PASS_OK=false
 CTXMAP_RAISE_OK=false
 
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 if [[ -n "$PROJECT_ROOT" && -f "${PROJECT_ROOT}/.sentinel/context-map.json" && ! -f "${PROJECT_ROOT}/.sentinel/context-map.building" ]]; then
-  # Compute relative path from project root
   REL_PATH="${FILE_PATH#"${PROJECT_ROOT}"/}"
-
-  # Check if this file has context-map data
   FILE_FUNCS=$(jq -r --arg f "$REL_PATH" '(.files[$f].functions // {}) | to_entries[] | "\(.key)=\(.value.classification)"' \
     "${PROJECT_ROOT}/.sentinel/context-map.json" 2>/dev/null)
 
   if [[ -n "$FILE_FUNCS" ]]; then
-    # Extract function names from the content being written
     CONTENT_FUNCS=$(echo "$CONTENT" | grep -oP '(?<=def )\w+' 2>/dev/null || true)
-
     if [[ -n "$CONTENT_FUNCS" ]]; then
       ALL_PASS_OK=true
       ALL_RAISE_OK=true
-
       while IFS= read -r fname; do
         [[ -z "$fname" ]] && continue
-        # Match function name (direct or Class.method format)
-        # Function names are [a-zA-Z0-9_]+ so no regex escaping needed
-        MATCHES=$(echo "$FILE_FUNCS" | grep -E "(^|\.)${fname}=" 2>/dev/null || true)
+        MATCHES=$(echo "$FILE_FUNCS" | grep -E "(^|\\.)${fname}=" 2>/dev/null || true)
         if [[ -n "$MATCHES" ]]; then
-          # If ANY match is abstract/intentional_noop, exempt this function
-          # (benefit of the doubt — regex fallback still catches truly wrong cases)
           HAS_EXEMPT=false
           while IFS= read -r match_line; do
             case "${match_line##*=}" in
@@ -76,109 +64,154 @@ if [[ -n "$PROJECT_ROOT" && -f "${PROJECT_ROOT}/.sentinel/context-map.json" && !
             ALL_PASS_OK=false; ALL_RAISE_OK=false
           fi
         else
-          # Function not in context-map — cannot exempt it
           ALL_PASS_OK=false
           ALL_RAISE_OK=false
         fi
       done <<< "$CONTENT_FUNCS"
-
       $ALL_PASS_OK && CTXMAP_PASS_OK=true
       $ALL_RAISE_OK && CTXMAP_RAISE_OK=true
     fi
   fi
 fi
 
-VIOLATIONS=""
+BLOCKS=""
+WARNINGS=""
 
-# 1. Standalone pass (Python) — not in @abstractmethod, __del__, finally, or cleanup
-# Context-map override: if ALL functions in content are abstract/intentional_noop, skip
-if ! $CTXMAP_PASS_OK && echo "$CONTENT" | grep -qP '^\s+pass\s*$'; then
-  # Allow pass in: @abstractmethod, __del__, finally blocks, cleanup/teardown functions
-  if ! echo "$CONTENT" | grep -qP '@abstractmethod|def __del__|def teardown|def tearDown|def cleanup|def close|finally\s*:'; then
-    VIOLATIONS="${VIOLATIONS}  - 'pass' as standalone statement (implement the function body)\n"
+# 1. Standalone pass (Python)
+ACTION=$(sentinel_get_action "codeQuality" "block_standalone_pass")
+if [[ "$ACTION" != "off" ]]; then
+  if ! $CTXMAP_PASS_OK && echo "$CONTENT" | grep -qP '^\s+pass\s*$'; then
+    if ! echo "$CONTENT" | grep -qP '@abstractmethod|def __del__|def teardown|def tearDown|def cleanup|def close|finally\s*:'; then
+      MSG="  - 'pass' as standalone statement (implement the function body)\n"
+      [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
+    fi
   fi
 fi
 
 # 2. raise NotImplementedError without @abstractmethod
-# Context-map override: if ALL functions in content are abstract/intentional_noop, skip
-if ! $CTXMAP_RAISE_OK && echo "$CONTENT" | grep -qP 'raise NotImplementedError'; then
-  if ! echo "$CONTENT" | grep -qP '@abstractmethod'; then
-    VIOLATIONS="${VIOLATIONS}  - 'raise NotImplementedError' without @abstractmethod (implement the logic)\n"
+ACTION=$(sentinel_get_action "codeQuality" "block_not_implemented")
+if [[ "$ACTION" != "off" ]]; then
+  if ! $CTXMAP_RAISE_OK && echo "$CONTENT" | grep -qP 'raise NotImplementedError'; then
+    if ! echo "$CONTENT" | grep -qP '@abstractmethod'; then
+      MSG="  - 'raise NotImplementedError' without @abstractmethod (implement the logic)\n"
+      [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
+    fi
   fi
 fi
 
 # 3. TODO/FIXME/PLACEHOLDER/HACK comments
-if echo "$CONTENT" | grep -qP '#\s*(TODO|FIXME|PLACEHOLDER|HACK|XXX)\b|//\s*(TODO|FIXME|PLACEHOLDER|HACK|XXX)\b'; then
-  VIOLATIONS="${VIOLATIONS}  - TODO/FIXME/PLACEHOLDER/HACK comment (implement now, don't defer)\n"
-fi
-
-# 4. Meaningless test assertions
-if echo "$CONTENT" | grep -qP 'assert\s+True|assert\s+1\s*==\s*1|assert\s+.*is\s+not\s+None\s*$|expect\(true\)\.toBe\(true\)'; then
-  VIOLATIONS="${VIOLATIONS}  - Meaningless assertion (assert True / expect(true).toBe(true)) — test real behavior\n"
-fi
-
-# 5. Debug print/console.log left in code
-if echo "$CONTENT" | grep -qP '^\s*print\s*\(\s*["\x27](debug|test|here|xxx|TODO)' ; then
-  VIOLATIONS="${VIOLATIONS}  - Debug print() statement — use logging module instead\n"
-fi
-if echo "$CONTENT" | grep -qP '^\s*console\.log\s*\(\s*["\x27](debug|test|here|xxx|TODO)'; then
-  VIOLATIONS="${VIOLATIONS}  - Debug console.log() — remove before committing\n"
-fi
-
-# 6. Empty function bodies (return None / return undefined / {})
-if echo "$CONTENT" | grep -qP '^\s*def\s+\w+\(.*\).*:\s*$' && echo "$CONTENT" | grep -qP '^\s+return\s*$|^\s+return\s+None\s*$'; then
-  VIOLATIONS="${VIOLATIONS}  - Empty function body (return None) — implement real logic\n"
-fi
-
-# 7. Pattern #3: Silent Error Swallowing — moved to post-edit-verify (WARNING)
-# except:pass has legitimate uses (cleanup, __del__, retry). Don't block, just warn.
-
-# 8. Pattern #5: Abandoned Test Code — skipped tests without reason
-if echo "$CONTENT" | grep -qP '@pytest\.mark\.skip\s*$|@pytest\.mark\.skip\(\s*\)|@unittest\.skip\s*$|@unittest\.skip\(\s*\)|\.skip\(\s*["\x27]\s*["\x27]\s*\)'; then
-  VIOLATIONS="${VIOLATIONS}  - Skipped test without reason — provide skip reason or remove [Pattern #5]\n"
-fi
-if echo "$CONTENT" | grep -qP '^\s*#\s*(def test_|class Test|it\(|describe\()'; then
-  VIOLATIONS="${VIOLATIONS}  - Commented-out test code — delete or implement, don't comment out [Pattern #5]\n"
-fi
-
-# 9. Pattern #10: Security Bypass — disabling SSL/verification
-# WARNING only (not blocking) — local dev with self-signed certs is legitimate
-if echo "$CONTENT" | grep -qP 'verify\s*=\s*False|ssl\s*=\s*False|check_hostname\s*=\s*False|VERIFY_SSL\s*=\s*False'; then
-  echo "⚠️ [Sentinel] verify=False detected — ensure this is not production code [Pattern #10]"
-fi
-
-# 10. Pattern #27: Unsafe Deserialization
-# WARNING only for pickle (ML model/cache is legitimate), BLOCK for yaml.unsafe_load
-if echo "$CONTENT" | grep -qP 'yaml\.unsafe_load|marshal\.loads?\('; then
-  VIOLATIONS="${VIOLATIONS}  - Unsafe deserialization (yaml.unsafe_load/marshal) — use safe alternatives [Pattern #27]\n"
-fi
-if echo "$CONTENT" | grep -qP 'pickle\.loads?\('; then
-  echo "⚠️ [Sentinel] pickle usage detected — ensure input is trusted (not user-controlled) [Pattern #27]"
-fi
-if echo "$CONTENT" | grep -qP 'yaml\.load\(' ; then
-  if ! echo "$CONTENT" | grep -qP 'yaml\.safe_load|Loader=yaml\.SafeLoader|Loader=yaml\.FullLoader'; then
-    VIOLATIONS="${VIOLATIONS}  - yaml.load() without SafeLoader — use yaml.safe_load() [Pattern #27]\n"
+ACTION=$(sentinel_get_action "codeQuality" "block_todo_comments")
+if [[ "$ACTION" != "off" ]]; then
+  if echo "$CONTENT" | grep -qP '#\s*(TODO|FIXME|PLACEHOLDER|HACK|XXX)\b|//\s*(TODO|FIXME|PLACEHOLDER|HACK|XXX)\b'; then
+    MSG="  - TODO/FIXME/PLACEHOLDER/HACK comment (implement now, don't defer)\n"
+    [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
   fi
 fi
 
-# 11. Pattern #29: Command Injection — moved to post-edit-verify (WARNING)
-# shell=True has legitimate uses (pipes, globbing). Warn, don't block.
-if echo "$CONTENT" | grep -qP 'os\.system\s*\(|os\.popen\s*\('; then
-  VIOLATIONS="${VIOLATIONS}  - os.system()/os.popen() — use subprocess.run() instead [Pattern #29]\n"
+# 4. Meaningless test assertions
+ACTION=$(sentinel_get_action "codeQuality" "block_meaningless_assertions")
+if [[ "$ACTION" != "off" ]]; then
+  if echo "$CONTENT" | grep -qP 'assert\s+True|assert\s+1\s*==\s*1|assert\s+.*is\s+not\s+None\s*$|expect\(true\)\.toBe\(true\)'; then
+    MSG="  - Meaningless assertion (assert True / expect(true).toBe(true)) — test real behavior\n"
+    [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
+  fi
 fi
 
-# Deep AST analysis is handled by post-edit-verify.sh (WARNING only).
-# deny-dummy.sh only blocks patterns that are ALWAYS wrong — no legitimate use case.
+# 5. Debug print/console.log left in code
+ACTION=$(sentinel_get_action "codeQuality" "block_debug_prints")
+if [[ "$ACTION" != "off" ]]; then
+  if echo "$CONTENT" | grep -qP '^\s*print\s*\(\s*["\'\''](debug|test|here|xxx|TODO)'; then
+    MSG="  - Debug print() statement — use logging module instead\n"
+    [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
+  fi
+  if echo "$CONTENT" | grep -qP '^\s*console\.log\s*\(\s*["\'\''](debug|test|here|xxx|TODO)'; then
+    MSG="  - Debug console.log() — remove before committing\n"
+    [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
+  fi
+fi
 
-if [[ -n "$VIOLATIONS" ]]; then
+# 6. Empty function bodies (return None / return undefined / {})
+ACTION=$(sentinel_get_action "codeQuality" "block_empty_functions")
+if [[ "$ACTION" != "off" ]]; then
+  if echo "$CONTENT" | grep -qP '^\s*def\s+\w+\(.*\).*:\s*$' && echo "$CONTENT" | grep -qP '^\s+return\s*$|^\s+return\s+None\s*$'; then
+    MSG="  - Empty function body (return None) — implement real logic\n"
+    [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
+  fi
+fi
+
+# 7. Skipped tests without reason
+ACTION=$(sentinel_get_action "codeQuality" "block_skipped_tests")
+if [[ "$ACTION" != "off" ]]; then
+  if echo "$CONTENT" | grep -qP '@pytest\.mark\.skip\s*$|@pytest\.mark\.skip\(\s*\)|@unittest\.skip\s*$|@unittest\.skip\(\s*\)|\.skip\(\s*["\'\''"]\s*["\'\''"]\s*\)'; then
+    MSG="  - Skipped test without reason — provide skip reason or remove [Pattern #5]\n"
+    [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
+  fi
+  if echo "$CONTENT" | grep -qP '^\s*#\s*(def test_|class Test|it\(|describe\()'; then
+    MSG="  - Commented-out test code — delete or implement, don't comment out [Pattern #5]\n"
+    [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
+  fi
+fi
+
+# 8. Unsafe deserialization
+ACTION=$(sentinel_get_action "codeQuality" "block_unsafe_deserialization")
+if [[ "$ACTION" != "off" ]]; then
+  if echo "$CONTENT" | grep -qP 'yaml\.unsafe_load|marshal\.loads?\('; then
+    MSG="  - Unsafe deserialization (yaml.unsafe_load/marshal) — use safe alternatives [Pattern #27]\n"
+    [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
+  fi
+  if echo "$CONTENT" | grep -qP 'yaml\.load\(' ; then
+    if ! echo "$CONTENT" | grep -qP 'yaml\.safe_load|Loader=yaml\.SafeLoader|Loader=yaml\.FullLoader'; then
+      MSG="  - yaml.load() without SafeLoader — use yaml.safe_load() [Pattern #27]\n"
+      [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
+    fi
+  fi
+fi
+
+# 9. Unsafe system commands
+ACTION=$(sentinel_get_action "codeQuality" "block_unsafe_commands")
+if [[ "$ACTION" != "off" ]]; then
+  if echo "$CONTENT" | grep -qP 'os\.system\s*\(|os\.popen\s*\('; then
+    MSG="  - os.system()/os.popen() — use subprocess.run() instead [Pattern #29]\n"
+    [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
+  fi
+fi
+
+# 10. SSL bypass (always warn-level at most)
+ACTION=$(sentinel_get_action "codeQuality" "warn_ssl_bypass" "warn")
+if [[ "$ACTION" != "off" ]]; then
+  if echo "$CONTENT" | grep -qP 'verify\s*=\s*False|ssl\s*=\s*False|check_hostname\s*=\s*False|VERIFY_SSL\s*=\s*False'; then
+    echo "⚠️ [Sentinel] verify=False detected — ensure this is not production code [Pattern #10]"
+  fi
+fi
+
+# 11. Pickle usage (always warn-level at most)
+ACTION=$(sentinel_get_action "codeQuality" "warn_pickle_usage" "warn")
+if [[ "$ACTION" != "off" ]]; then
+  if echo "$CONTENT" | grep -qP 'pickle\.loads?\('; then
+    echo "⚠️ [Sentinel] pickle usage detected — ensure input is trusted (not user-controlled) [Pattern #27]"
+  fi
+fi
+
+# --- Output ---
+if [[ -n "$BLOCKS" ]]; then
   echo "⛔ [Sentinel Deny-Dummy] Placeholder/stub code detected in: $(basename "$FILE_PATH")"
   echo ""
-  echo -e "Violations:\n${VIOLATIONS}"
+  echo -e "Violations:\n${BLOCKS}"
+  if [[ -n "$WARNINGS" ]]; then
+    echo -e "Warnings:\n${WARNINGS}"
+  fi
   echo "Every function must have a real implementation. No stubs, no deferred work."
   echo "→ Implement the actual logic, then retry."
   sentinel_stats_increment "blocks"
   sentinel_stats_increment "pattern_dummy_code"
   exit 2
+fi
+
+if [[ -n "$WARNINGS" ]]; then
+  echo "⚠️ [Sentinel Deny-Dummy] Code quality warnings in: $(basename "$FILE_PATH")"
+  echo ""
+  echo -e "Warnings:\n${WARNINGS}"
+  sentinel_stats_increment "warnings"
 fi
 
 sentinel_stats_increment "checks"

@@ -7,9 +7,13 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/_common.sh"
 sentinel_require_jq "scope-guard"
 sentinel_require_pcre "scope-guard"
-sentinel_check_enabled "scope_guard"
+sentinel_compat_check "scope_guard"
 
 INPUT=$(cat)
+# Check per-item action
+ACTION=$(sentinel_get_action "workflow" "warn_scope_reduction_prompt" "warn")
+[[ "$ACTION" == "off" ]] && exit 0
+
 USER_PROMPT=$(echo "$INPUT" | jq -r '.tool_input.user_prompt // .tool_input.content // empty' 2>/dev/null)
 
 [[ -z "$USER_PROMPT" ]] && exit 0

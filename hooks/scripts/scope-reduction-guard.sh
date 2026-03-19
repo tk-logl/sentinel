@@ -1,14 +1,14 @@
 #!/bin/bash
 # Sentinel PreToolUse Hook: Scope Reduction Guard (BLOCKING)
 # Blocks code edits that contain scope-reduction language in comments.
-# Unlike scope-guard.sh (prompt-level warning), this blocks actual code writes.
+# v1.5.0: Per-item configurable actions (block/warn/off).
 # Exit 2 = DENY | Exit 0 = ALLOW
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/_common.sh"
 sentinel_require_jq "scope-reduction-guard" "blocking"
 sentinel_require_pcre "scope-reduction-guard" "blocking"
-sentinel_check_enabled "scope_reduction_guard"
+sentinel_compat_check "scope_reduction_guard"
 
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
@@ -29,6 +29,10 @@ fi
 if sentinel_should_skip "$FILE_PATH"; then
   exit 0
 fi
+
+# Check per-item action
+ACTION=$(sentinel_get_action "codeQuality" "block_scope_reduction_comments")
+[[ "$ACTION" == "off" ]] && exit 0
 
 # Get content being written
 if [[ "$TOOL_NAME" == "Write" ]]; then
@@ -76,16 +80,24 @@ if echo "$COMMENT_LINES" | grep -qP "$JA_PATTERN" 2>/dev/null; then
 fi
 
 if [[ -n "$VIOLATIONS" ]]; then
-  echo "⛔ [Sentinel Scope-Reduction-Guard] Scope reduction in code comments detected"
-  echo "  File: $(basename "$FILE_PATH")"
-  echo ""
-  echo -e "Violations:\n${VIOLATIONS}"
-  echo "Code comments must NOT contain scope-reduction language."
-  echo "Either implement completely or do not write the code at all."
-  echo "→ Remove scope-reduction comments and implement fully, then retry."
-  sentinel_stats_increment "blocks"
-  sentinel_stats_increment "pattern_scope_reduction"
-  exit 2
+  if [[ "$ACTION" == "block" ]]; then
+    echo "⛔ [Sentinel Scope-Reduction-Guard] Scope reduction in code comments detected"
+    echo "  File: $(basename "$FILE_PATH")"
+    echo ""
+    echo -e "Violations:\n${VIOLATIONS}"
+    echo "Code comments must NOT contain scope-reduction language."
+    echo "Either implement completely or do not write the code at all."
+    echo "→ Remove scope-reduction comments and implement fully, then retry."
+    sentinel_stats_increment "blocks"
+    sentinel_stats_increment "pattern_scope_reduction"
+    exit 2
+  else
+    echo "⚠️ [Sentinel Scope-Reduction-Guard] Scope reduction language detected"
+    echo "  File: $(basename "$FILE_PATH")"
+    echo ""
+    echo -e "Warnings:\n${VIOLATIONS}"
+    sentinel_stats_increment "warnings"
+  fi
 fi
 
 sentinel_stats_increment "checks"

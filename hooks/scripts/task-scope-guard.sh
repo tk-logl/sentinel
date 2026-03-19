@@ -6,9 +6,13 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/_common.sh"
 sentinel_require_jq "task-scope-guard"
-sentinel_check_enabled "task_scope_guard"
+sentinel_compat_check "task_scope_guard"
 
 INPUT=$(cat)
+# Check per-item action
+ACTION=$(sentinel_get_action "workflow" "enforce_numbered_lists" "warn")
+[[ "$ACTION" == "off" ]] && exit 0
+
 USER_PROMPT=$(echo "$INPUT" | jq -r '.tool_input.user_prompt // empty' 2>/dev/null)
 [[ -z "$USER_PROMPT" ]] && exit 0
 

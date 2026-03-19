@@ -7,13 +7,17 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/_common.sh"
 sentinel_require_jq "subagent-context"
-sentinel_check_enabled "subagent_context"
+sentinel_compat_check "subagent_context"
 
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
 
 # Only fire on Task tool (subagent spawn)
 [[ "$TOOL_NAME" != "Task" ]] && exit 0
+
+# Check per-item action
+ACTION=$(sentinel_get_action "context" "subagent_rule_injection" "on")
+[[ "$ACTION" == "off" ]] && exit 0
 
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 [[ -z "$PROJECT_ROOT" ]] && exit 0

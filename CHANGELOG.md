@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-03-19
+
+### Added
+- **Per-item permission system** — 65 configurable items across 7 categories, each with individual block/warn/on/off actions
+  - `sentinel_get_action(category, item_key, fallback)` — 3-tier resolution: project override → mode defaults → caller fallback
+  - `sentinel_is_active(category, item_key)` — boolean check for on/off items
+  - `sentinel_add_violation(level, message)` — standardized violation tracking
+  - `sentinel_compat_check(old_key)` — backward compatibility bridge for v1.4.0 enforcement booleans
+  - `sentinel_reset_action_cache()` — cache invalidation for dynamic config changes
+- **4 preset modes** — `relaxed`, `standard` (default), `strict`, `paranoid` with curated defaults for all 65 items
+  - `config/mode-defaults.json` — mode → category → item lookup table
+  - `config/item-catalog.json` — 65 items with Korean descriptions, 🚫/✅ examples, categories
+- **7 permission categories**: codeQuality (12), security (9), workflow (9), safetyNet (13), editDiscipline (4), context (5), analysis (13)
+- **5 new env-safety checks**:
+  - `block_push_protected_branch` — blocks push to main/master/develop (configurable via `protected_branches`)
+  - `block_git_clean` — blocks `git clean -f` (destructive file removal)
+  - `block_git_checkout_discard` — blocks `git checkout -- .` / `git restore .` (bulk discard)
+  - `block_destructive_sql` — blocks DROP TABLE/DATABASE/TRUNCATE
+  - `block_branch_delete_protected` — blocks deletion of protected branches
+- Config: `protected_branches` array (default: `["main","master","develop"]`)
+- Config: `_schema_version: "1.5.0"` marker
+- 16 new tests (73 total, up from 57): mode resolution, new env-safety checks, per-item mode override
+
+### Changed
+- **All 19 hooks refactored** to use `sentinel_get_action()` instead of binary on/off toggles
+  - `deny-dummy.sh` — 12 individually configurable items (block_standalone_pass, block_not_implemented, block_todo_comments, etc.)
+  - `secret-scan.sh` — 9 individually configurable items (block_openai_stripe_keys, block_github_tokens, etc.)
+  - `env-safety.sh` — 13 individually configurable items (block_brew_on_linux, block_bare_python, block_dangerous_rm, etc.)
+  - `surgical-change.sh` — 4 individually configurable items (warn_large_edits, warn_write_overwrites, etc.)
+  - `post-edit-verify.sh` — 13 individually configurable items (warn_silent_error_swallowing, warn_bare_except, etc.)
+  - `scope-reduction-guard.sh` — per-item action for block_scope_reduction_comments
+  - All other hooks updated with `sentinel_compat_check()` for backward compatibility
+- Hooks now support mixed block+warn in single pass (e.g. deny-dummy can block TODO but warn on debug prints)
+- Legacy v1.4.0 configs (no `.mode`/`.categories`) continue to work via `__legacy__` mode detection
+
+### Backward Compatibility
+- v1.4.0 `enforcement.*` booleans still work — `sentinel_compat_check()` bridges old keys to new system
+- Projects without `mode` or `categories` in config default to `__legacy__` mode (uses caller fallback, not mode-defaults)
+- No breaking changes — existing configs work without modification
+
 ## [1.4.0] - 2026-03-18
 
 ### Added
@@ -124,7 +164,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Configuration** — `config/sentinel.json` with per-hook enforcement toggles
 - MIT License
 
-[Unreleased]: https://github.com/tk-logl/sentinel/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/tk-logl/sentinel/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/tk-logl/sentinel/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/tk-logl/sentinel/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/tk-logl/sentinel/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/tk-logl/sentinel/compare/v1.1.0...v1.2.0

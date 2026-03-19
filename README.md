@@ -240,45 +240,66 @@ After `/sentinel:init`, configure at `.sentinel/config.json`:
 
 ```json
 {
+  "mode": "standard",
   "language": "auto",
   "source_extensions": ["py", "ts", "tsx", "js", "jsx", "go"],
   "skip_patterns": ["**/test_*", "**/node_modules/**"],
-  "header_threshold_lines": 200,
-  "error_repeat_limit": 3,
-  "surgical_change_max_lines": 15,
-  "enforcement": {
-    "pre_edit_gate": true,
-    "deny_dummy": true,
-    "surgical_change": true,
-    "scope_guard": true,
-    "secret_scan": true,
-    "scope_reduction_guard": true,
-    "task_scope_guard": true,
-    "task_automark": true,
-    "task_completion_gate": true,
-    "subagent_context": true,
-    "file_header_check": true,
-    "env_safety": true,
-    "error_logger": true,
-    "post_edit_verify": true,
-    "completion_check": true
-  },
-  "taskList": {
-    "enabled": true,
-    "file": "auto",
-    "idPattern": "[A-Z]+-[0-9]+",
-    "autoMarkOnCommit": true,
-    "maxInjectItems": 30
+  "protected_branches": ["main", "master", "develop"],
+  "categories": {
+    "codeQuality": {
+      "block_todo_comments": "off"
+    }
   }
 }
 ```
 
-**Enforcement levels:**
-- **Strict** (default) — All hooks active
-- **Standard** — Disable `pre_edit_gate` (no checklist required)
-- **Minimal** — Only `deny_dummy` + `secret_scan`
+### Preset Modes (v1.5.0)
 
-Set any enforcement key to `false` to disable that hook.
+Choose a mode to set defaults for all 65 items at once:
+
+| Mode | Philosophy | Blocking | Warnings |
+|------|-----------|----------|----------|
+| `relaxed` | Minimal friction | Secrets only | Few |
+| `standard` | Balanced (default) | Code quality + secrets + safety | Most analysis |
+| `strict` | Maximum enforcement | Everything | Everything |
+| `paranoid` | Zero tolerance | Everything at block level | Everything |
+
+### Per-Item Override
+
+Override any item within its category:
+
+```json
+{
+  "mode": "standard",
+  "categories": {
+    "codeQuality": { "block_todo_comments": "off" },
+    "safetyNet": { "block_force_push": "block" },
+    "analysis": { "warn_any_type": "warn" }
+  }
+}
+```
+
+**Resolution order:** project override → mode default → hook fallback.
+
+### Categories (7)
+
+| Category | Items | What It Controls |
+|----------|-------|-----------------|
+| `codeQuality` | 12 | pass, TODO, assert True, debug prints, empty functions, unsafe deserialization |
+| `security` | 9 | API keys, tokens, credentials, private keys, connection strings |
+| `workflow` | 9 | Pre-edit checklist, scope guard, task tracking, completion checks |
+| `safetyNet` | 13 | Dangerous commands, force push, protected branches, destructive SQL |
+| `editDiscipline` | 4 | Large edits, file overwrites, function deletion, file headers |
+| `context` | 5 | Session init, state preservation, compaction restore |
+| `analysis` | 13 | Silent errors, missing types, bare except, console.log, datetime |
+
+Each item supports 4 actions: `block` (deny edit), `warn` (allow + message), `on` (silently active), `off` (disabled).
+
+See `config/item-catalog.json` for the full list with descriptions and examples.
+
+### Legacy Compatibility
+
+v1.4.0 `enforcement.*` booleans still work. Projects without `mode` or `categories` behave identically to v1.4.0.
 
 ## Platform Support
 
@@ -314,7 +335,7 @@ Sentinel requires `.sentinel/current-task.json` before source code edits:
 }
 ```
 
-Disable with `"pre_edit_gate": false` in config if you prefer not to use checklists.
+Disable with `"categories": {"workflow": {"require_pre_edit_checklist": "off"}}` or use `"mode": "relaxed"`.
 
 ## FAQ
 
@@ -322,7 +343,7 @@ Disable with `"pre_edit_gate": false` in config if you prefer not to use checkli
 No. Each hook has a timeout (3-10s) and fail-open design. If a hook crashes or times out, the action proceeds. Median hook execution: <100ms.
 
 **Q: Can I disable specific hooks?**
-Yes. Set any key in `enforcement` to `false` in `.sentinel/config.json`. The hook will silently skip.
+Yes. Set `"mode": "relaxed"` for minimal enforcement, or override individual items: `"categories": {"codeQuality": {"block_todo_comments": "off"}}`. Legacy `enforcement.*` booleans also still work.
 
 **Q: Will it block my test files?**
 No. Test files (`test_*`, `*.test.*`, `*.spec.*`, `/tests/`) are excluded from blocking hooks. You can write `assert True` in tests.
@@ -358,7 +379,7 @@ sentinel/
 ├── commands/                # 3 slash commands
 ├── config/                  # Default configuration
 ├── templates/               # CLAUDE.md, settings.json, file-header
-├── tests/                   # 57 automated tests
+├── tests/                   # 73 automated tests
 └── .github/workflows/       # CI (ShellCheck + tests + validation)
 ```
 
