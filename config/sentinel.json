@@ -87,6 +87,16 @@
       "safetyNet": {
         "block_push_protected_branch": "block"
       }
+    },
+    "linters": "Array of linter configs: {command, extensions, name}. Use {file} placeholder."
+  },
+  "linters": [
+    {
+      "command": "ruff check {file}",
+      "extensions": [
+        "py"
+      ],
+      "name": "ruff"
     }
-  }
+  ]
 }

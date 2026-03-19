@@ -153,6 +153,49 @@ if [[ "$ACTION" != "off" && -f "${SCRIPT_DIR}/deep-analyze.py" ]]; then
   fi
 fi
 
+# 8. Configurable linter integration
+ACTION=$(sentinel_get_action "analysis" "run_post_edit_linters" "on")
+if [[ "$ACTION" != "off" ]]; then
+  LINTER_COUNT=$(sentinel_read_config '.linters | length' '0')
+  if [[ "$LINTER_COUNT" -gt 0 ]]; then
+    for i in $(seq 0 $((LINTER_COUNT - 1))); do
+      LINTER_CMD=$(sentinel_read_config ".linters[$i].command" "")
+      LINTER_EXTS=$(sentinel_read_config ".linters[$i].extensions | join(\" \")" "")
+      LINTER_NAME=$(sentinel_read_config ".linters[$i].name" "linter")
+      [[ -z "$LINTER_CMD" ]] && continue
+
+      # Check if file extension matches
+      MATCH=false
+      if [[ -z "$LINTER_EXTS" ]]; then
+        MATCH=true
+      else
+        for lext in $LINTER_EXTS; do
+          [[ "$EXT" == "$lext" ]] && MATCH=true && break
+        done
+      fi
+
+      if [[ "$MATCH" == "true" ]]; then
+        # Replace {file} placeholder with actual path
+        RESOLVED_CMD="${LINTER_CMD//\{file\}/$FILE_PATH}"
+        # Run with timeout (5s max)
+        LINTER_EXIT=0
+        LINTER_OUTPUT=$(timeout 5 bash -c "$RESOLVED_CMD" 2>&1) || LINTER_EXIT=$?
+        if [[ -n "$LINTER_OUTPUT" && "$LINTER_EXIT" -ne 0 ]]; then
+          LINT_LINES=$(echo "$LINTER_OUTPUT" | head -10)
+          LINT_COUNT=$(echo "$LINTER_OUTPUT" | wc -l)
+          WARNINGS="${WARNINGS}⚠️  ${LINTER_NAME}: ${LINT_COUNT} issue(s):\n"
+          while IFS= read -r lint_line; do
+            [[ -z "$lint_line" ]] && continue
+            WARNINGS="${WARNINGS}  ${lint_line}\n"
+          done <<< "$LINT_LINES"
+          [[ $LINT_COUNT -gt 10 ]] && WARNINGS="${WARNINGS}  ... and $((LINT_COUNT - 10)) more\n"
+          WARNINGS="${WARNINGS}\n"
+        fi
+      fi
+    done
+  fi
+fi
+
 if [[ -n "$WARNINGS" ]]; then
   echo "🔍 [Sentinel Post-Edit Verify] $(basename "$FILE_PATH")"
   echo ""

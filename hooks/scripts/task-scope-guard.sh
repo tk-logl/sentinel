@@ -40,6 +40,22 @@ LETTER_ITEMS=$(echo "$USER_PROMPT" | grep -cP '^\s*[a-zA-Z][\.\)]\s' 2>/dev/null
 DASH_ITEMS=$(echo "$USER_PROMPT" | grep -cP '^\s*[-\*]\s' 2>/dev/null || true)
 [[ -n "$DASH_ITEMS" && "$DASH_ITEMS" -ge 3 ]] && ITEM_COUNT=$((ITEM_COUNT + DASH_ITEMS))
 
+# Additive connectors (Korean/English/Japanese): signals multi-task intent
+CONNECTOR_ACTION=$(sentinel_get_action "workflow" "detect_additive_connectors" "warn")
+if [[ "$CONNECTOR_ACTION" != "off" ]]; then
+  # Korean connectors: 그리고, 또한, 추가로, 함께, 아울러, 더불어, ~하고, ~도
+  KO_CONNECTORS=$(echo "$USER_PROMPT" | grep -coP '그리고|또한|추가로|함께|아울러|더불어' 2>/dev/null || true)
+  # English connectors: "and also", "additionally", "as well as", "plus"
+  EN_CONNECTORS=$(echo "$USER_PROMPT" | grep -coiP '\band also\b|\badditionally\b|\bas well as\b|\bplus\b|\bon top of that\b' 2>/dev/null || true)
+  # Japanese connectors: そして, また, さらに, 加えて
+  JA_CONNECTORS=$(echo "$USER_PROMPT" | grep -coP 'そして|また|さらに|加えて' 2>/dev/null || true)
+  CONNECTOR_TOTAL=$(( ${KO_CONNECTORS:-0} + ${EN_CONNECTORS:-0} + ${JA_CONNECTORS:-0} ))
+  # Each connector implies at least 2 tasks (before + after the connector)
+  if [[ $CONNECTOR_TOTAL -gt 0 && $ITEM_COUNT -lt 2 ]]; then
+    ITEM_COUNT=$((CONNECTOR_TOTAL + 1))
+  fi
+fi
+
 # Only enforce if 2+ items detected
 if [[ $ITEM_COUNT -ge 2 ]]; then
   echo ""

@@ -1038,6 +1038,117 @@ CONF
 RESULT=$(cd "$MODE_PROJ" && echo '{"tool_name":"Edit","tool_input":{"file_path":"'"$MODE_PROJ"'/src/app.py","new_string":"# TODO: add error handling\ndef handler():\n    return process()"}}' | SENTINEL_PLUGIN_ROOT="$PLUGIN_ROOT" bash "$PLUGIN_ROOT/hooks/scripts/deny-dummy.sh" 2>&1; echo "EXIT:$?")
 echo "$RESULT" | grep -q "EXIT:0" && _pass "relaxed mode: TODO comment -> allowed" || _fail "relaxed TODO" "exit=$(echo "$RESULT" | grep -oP 'EXIT:\K\d+')"
 
+# ═══════════════════════════════════════
+section "34. surgical-change — active caller check"
+# ═══════════════════════════════════════
+
+CALLER_PROJ="${TMPDIR_ROOT}/caller-proj"
+mkdir -p "$CALLER_PROJ/.sentinel" "$CALLER_PROJ/src"
+git -C "$CALLER_PROJ" init -q 2>/dev/null
+cat > "$CALLER_PROJ/.sentinel/config.json" << 'CONF'
+{"mode":"strict"}
+CONF
+
+# Create files with caller relationships
+cat > "$CALLER_PROJ/src/utils.py" << 'PYCODE'
+def calculate_total(items):
+    return sum(i.price for i in items)
+PYCODE
+
+cat > "$CALLER_PROJ/src/views.py" << 'PYCODE'
+from .utils import calculate_total
+
+def order_view(request):
+    total = calculate_total(request.items)
+    return {"total": total}
+PYCODE
+
+# Try to delete calculate_total — should detect caller in views.py
+OLD_STR=$'def calculate_total(items):\n    return sum(i.price for i in items)'
+EDIT_INPUT=$(edit_json "$CALLER_PROJ/src/utils.py" "$OLD_STR" "")
+RESULT=$(cd "$CALLER_PROJ" && echo "$EDIT_INPUT" | SENTINEL_PLUGIN_ROOT="$PLUGIN_ROOT" bash "$PLUGIN_ROOT/hooks/scripts/surgical-change.sh" 2>&1; echo "EXIT:$?")
+echo "$RESULT" | grep -q "caller(s) found" && _pass "caller check: callers found -> reported" || _fail "caller check" "no caller warning"
+echo "$RESULT" | grep -q "EXIT:2" && _pass "caller check: strict mode -> blocked" || _fail "caller check block" "exit=$(echo "$RESULT" | grep -oP 'EXIT:\K\d+')"
+
+# Delete a function with no callers — should be allowed
+cat > "$CALLER_PROJ/src/orphan.py" << 'PYCODE'
+def unused_helper():
+    return 42
+PYCODE
+
+OLD_STR=$'def unused_helper():\n    return 42'
+EDIT_INPUT=$(edit_json "$CALLER_PROJ/src/orphan.py" "$OLD_STR" "")
+RESULT=$(cd "$CALLER_PROJ" && echo "$EDIT_INPUT" | SENTINEL_PLUGIN_ROOT="$PLUGIN_ROOT" bash "$PLUGIN_ROOT/hooks/scripts/surgical-change.sh" 2>&1; echo "EXIT:$?")
+echo "$RESULT" | grep -q "caller(s) found" && _fail "orphan delete" "false positive callers" || _pass "caller check: no callers -> no block"
+
+# ═══════════════════════════════════════
+section "35. post-edit-verify — linter integration"
+# ═══════════════════════════════════════
+
+LINT_PROJ="${TMPDIR_ROOT}/lint-proj"
+mkdir -p "$LINT_PROJ/.sentinel" "$LINT_PROJ/src"
+git -C "$LINT_PROJ" init -q 2>/dev/null
+
+# Config with a simple linter (use grep as fake linter that always finds "issues")
+cat > "$LINT_PROJ/.sentinel/config.json" << 'CONF'
+{"mode":"standard","linters":[{"command":"echo 'E001: line too long' && exit 1","extensions":["py"],"name":"test-linter"}]}
+CONF
+
+# Create a Python file
+cat > "$LINT_PROJ/src/app.py" << 'PYCODE'
+def hello():
+    return "world"
+PYCODE
+
+# Run post-edit-verify — should show linter output
+RESULT=$(cd "$LINT_PROJ" && echo '{"tool_name":"Edit","tool_input":{"file_path":"'"$LINT_PROJ"'/src/app.py","old_string":"world","new_string":"earth"}}' | SENTINEL_PLUGIN_ROOT="$PLUGIN_ROOT" bash "$PLUGIN_ROOT/hooks/scripts/post-edit-verify.sh" 2>&1; echo "EXIT:$?")
+echo "$RESULT" | grep -q "test-linter" && _pass "linter: output shown" || _fail "linter output" "no linter output"
+echo "$RESULT" | grep -q "E001" && _pass "linter: issue details shown" || _fail "linter details" "no E001"
+
+# Config without linters — should not run any
+cat > "$LINT_PROJ/.sentinel/config.json" << 'CONF'
+{"mode":"standard"}
+CONF
+
+RESULT=$(cd "$LINT_PROJ" && echo '{"tool_name":"Edit","tool_input":{"file_path":"'"$LINT_PROJ"'/src/app.py","old_string":"earth","new_string":"mars"}}' | SENTINEL_PLUGIN_ROOT="$PLUGIN_ROOT" bash "$PLUGIN_ROOT/hooks/scripts/post-edit-verify.sh" 2>&1; echo "EXIT:$?")
+echo "$RESULT" | grep -q "test-linter" && _fail "no-linter config" "linter ran without config" || _pass "linter: no config -> no linter"
+
+# Extension mismatch — .ts file with py-only linter
+cat > "$LINT_PROJ/.sentinel/config.json" << 'CONF'
+{"mode":"standard","linters":[{"command":"echo 'FAIL' && exit 1","extensions":["py"],"name":"py-only"}]}
+CONF
+cat > "$LINT_PROJ/src/app.ts" << 'TSCODE'
+const x = 1;
+TSCODE
+
+RESULT=$(cd "$LINT_PROJ" && echo '{"tool_name":"Edit","tool_input":{"file_path":"'"$LINT_PROJ"'/src/app.ts","old_string":"1","new_string":"2"}}' | SENTINEL_PLUGIN_ROOT="$PLUGIN_ROOT" bash "$PLUGIN_ROOT/hooks/scripts/post-edit-verify.sh" 2>&1; echo "EXIT:$?")
+echo "$RESULT" | grep -q "py-only" && _fail "ext mismatch" "linter ran on wrong ext" || _pass "linter: extension mismatch -> skipped"
+
+# ═══════════════════════════════════════
+section "36. task-scope-guard — additive connector detection"
+# ═══════════════════════════════════════
+
+TSG_HOOK="$PLUGIN_ROOT/hooks/scripts/task-scope-guard.sh"
+
+# Korean connectors
+RESULT=$(echo '{"tool_input":{"user_prompt":"로그인 기능 만들고 그리고 회원가입도 추가해줘"}}' | SENTINEL_PLUGIN_ROOT="$PLUGIN_ROOT" bash "$TSG_HOOK" 2>&1)
+echo "$RESULT" | grep -q "items detected" && _pass "connector: 그리고 -> multi-task" || _fail "connector 그리고" "not detected"
+
+RESULT=$(echo '{"tool_input":{"user_prompt":"에러 핸들링 추가로 테스트도 작성해"}}' | SENTINEL_PLUGIN_ROOT="$PLUGIN_ROOT" bash "$TSG_HOOK" 2>&1)
+echo "$RESULT" | grep -q "items detected" && _pass "connector: 추가로 -> multi-task" || _fail "connector 추가로" "not detected"
+
+# English connectors
+RESULT=$(echo '{"tool_input":{"user_prompt":"fix the login bug and also add rate limiting"}}' | SENTINEL_PLUGIN_ROOT="$PLUGIN_ROOT" bash "$TSG_HOOK" 2>&1)
+echo "$RESULT" | grep -q "items detected" && _pass "connector: and also -> multi-task" || _fail "connector and-also" "not detected"
+
+# Single task without connector — should not trigger
+RESULT=$(echo '{"tool_input":{"user_prompt":"로그인 기능 만들어줘"}}' | SENTINEL_PLUGIN_ROOT="$PLUGIN_ROOT" bash "$TSG_HOOK" 2>&1)
+echo "$RESULT" | grep -q "items detected" && _fail "single task" "false positive" || _pass "connector: single task -> no trigger"
+
+# Japanese connector
+RESULT=$(echo '{"tool_input":{"user_prompt":"ログイン機能を作って、さらにテストも書いて"}}' | SENTINEL_PLUGIN_ROOT="$PLUGIN_ROOT" bash "$TSG_HOOK" 2>&1)
+echo "$RESULT" | grep -q "items detected" && _pass "connector: さらに -> multi-task" || _fail "connector さらに" "not detected"
+
 printf "${BOLD}Results: %d total | ${GREEN}%d passed${RESET} | ${RED}%d failed${RESET}\n" \
   "$TOTAL_COUNT" "$PASS_COUNT" "$FAIL_COUNT"
 printf "${BOLD}========================================${RESET}\n\n"

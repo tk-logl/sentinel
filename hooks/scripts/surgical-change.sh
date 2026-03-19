@@ -73,6 +73,34 @@ if [[ "$TOOL_NAME" == "Edit" ]]; then
             MSG="${MSG}   Before deleting, run: grep -rn \"${FN_NAME}\" . --include='*.${FILE_PATH##*.}'\n"
             MSG="${MSG}   Ensure zero callers/importers exist before removing.\n\n"
             [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
+
+            # Active caller check: grep for real callers and block if found
+            CALLER_ACTION=$(sentinel_get_action "editDiscipline" "block_delete_with_callers" "warn")
+            if [[ "$CALLER_ACTION" != "off" ]]; then
+              PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+              FILE_EXT="${FILE_PATH##*.}"
+              CALLERS=$(grep -rn "\b${FN_NAME}\b" "$PROJECT_ROOT" \
+                --include="*.${FILE_EXT}" \
+                --exclude-dir=".git" \
+                --exclude-dir="node_modules" \
+                --exclude-dir="__pycache__" \
+                --exclude-dir=".sentinel" \
+                2>/dev/null \
+                | grep -v "^${FILE_PATH}:" \
+                | grep -v "def ${FN_NAME}\|class ${FN_NAME}\|function ${FN_NAME}" \
+                | grep -v "test_\|_test\.\|\.test\.\|\.spec\." \
+                | head -10)
+              if [[ -n "$CALLERS" ]]; then
+                CALLER_COUNT=$(echo "$CALLERS" | wc -l)
+                CALLER_MSG="  \u26d4 ${CALLER_COUNT} caller(s) found for '${FN_NAME}':\n"
+                while IFS= read -r caller_line; do
+                  [[ -z "$caller_line" ]] && continue
+                  CALLER_MSG="${CALLER_MSG}    ${caller_line}\n"
+                done <<< "$CALLERS"
+                CALLER_MSG="${CALLER_MSG}   Fix or remove all callers before deleting this function.\n\n"
+                [[ "$CALLER_ACTION" == "block" ]] && BLOCKS="${BLOCKS}${CALLER_MSG}" || WARNINGS="${WARNINGS}${CALLER_MSG}"
+              fi
+            fi
           fi
         fi
       fi

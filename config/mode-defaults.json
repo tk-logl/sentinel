@@ -1,0 +1,338 @@
+{
+  "relaxed": {
+    "codeQuality": {
+      "block_standalone_pass": "warn",
+      "block_not_implemented": "warn",
+      "block_todo_comments": "off",
+      "block_meaningless_assertions": "warn",
+      "block_debug_prints": "off",
+      "block_empty_functions": "off",
+      "block_skipped_tests": "off",
+      "block_unsafe_deserialization": "warn",
+      "block_unsafe_commands": "warn",
+      "block_scope_reduction_comments": "off",
+      "warn_ssl_bypass": "off",
+      "warn_pickle_usage": "off"
+    },
+    "security": {
+      "block_openai_stripe_keys": "block",
+      "block_github_tokens": "block",
+      "block_slack_tokens": "block",
+      "block_aws_keys": "block",
+      "block_generic_credentials": "warn",
+      "block_jwt_tokens": "warn",
+      "block_google_api_keys": "block",
+      "block_private_keys": "block",
+      "block_db_connection_strings": "warn"
+    },
+    "workflow": {
+      "require_pre_edit_checklist": "off",
+      "inject_task_spec_on_allow": "off",
+      "warn_scope_reduction_prompt": "off",
+      "enforce_numbered_lists": "off",
+      "completion_check": "off",
+      "task_completion_evidence": "off",
+      "task_automark_on_commit": "off",
+      "inject_task_list_on_start": "off",
+      "inject_task_list_on_compact": "off",
+      "detect_additive_connectors": "off"
+    },
+    "safetyNet": {
+      "block_brew_on_linux": "block",
+      "block_bare_python": "off",
+      "block_dangerous_rm": "block",
+      "warn_pip_without_venv": "off",
+      "block_no_verify": "off",
+      "warn_sudo": "off",
+      "block_force_push": "off",
+      "block_git_reset_hard": "off",
+      "block_push_protected_branch": "off",
+      "block_git_clean": "off",
+      "block_git_checkout_discard": "off",
+      "block_destructive_sql": "warn",
+      "block_branch_delete_protected": "off"
+    },
+    "editDiscipline": {
+      "warn_large_edits": "off",
+      "warn_write_overwrites": "off",
+      "warn_function_deletion": "off",
+      "warn_missing_file_header": "off",
+      "block_delete_with_callers": "off"
+    },
+    "context": {
+      "session_init_injection": "on",
+      "state_preserve_on_compact": "on",
+      "context_restore_on_compact": "on",
+      "session_save_on_end": "on",
+      "subagent_rule_injection": "off"
+    },
+    "analysis": {
+      "warn_silent_error_swallowing": "off",
+      "warn_missing_type_hints": "off",
+      "warn_bare_except": "off",
+      "warn_print_in_source": "off",
+      "warn_console_log": "off",
+      "warn_any_type": "off",
+      "warn_naive_datetime": "off",
+      "warn_missing_future_annotations": "off",
+      "warn_remaining_stubs": "off",
+      "warn_missing_logging": "off",
+      "deep_ast_analysis": "off",
+      "error_logging": "off",
+      "context_map_build": "off",
+      "run_post_edit_linters": "off"
+    }
+  },
+  "standard": {
+    "codeQuality": {
+      "block_standalone_pass": "block",
+      "block_not_implemented": "block",
+      "block_todo_comments": "block",
+      "block_meaningless_assertions": "block",
+      "block_debug_prints": "block",
+      "block_empty_functions": "warn",
+      "block_skipped_tests": "warn",
+      "block_unsafe_deserialization": "block",
+      "block_unsafe_commands": "block",
+      "block_scope_reduction_comments": "block",
+      "warn_ssl_bypass": "warn",
+      "warn_pickle_usage": "warn"
+    },
+    "security": {
+      "block_openai_stripe_keys": "block",
+      "block_github_tokens": "block",
+      "block_slack_tokens": "block",
+      "block_aws_keys": "block",
+      "block_generic_credentials": "block",
+      "block_jwt_tokens": "block",
+      "block_google_api_keys": "block",
+      "block_private_keys": "block",
+      "block_db_connection_strings": "block"
+    },
+    "workflow": {
+      "require_pre_edit_checklist": "off",
+      "inject_task_spec_on_allow": "off",
+      "warn_scope_reduction_prompt": "warn",
+      "enforce_numbered_lists": "off",
+      "completion_check": "warn",
+      "task_completion_evidence": "warn",
+      "task_automark_on_commit": "on",
+      "inject_task_list_on_start": "on",
+      "inject_task_list_on_compact": "on",
+      "detect_additive_connectors": "warn"
+    },
+    "safetyNet": {
+      "block_brew_on_linux": "block",
+      "block_bare_python": "block",
+      "block_dangerous_rm": "block",
+      "warn_pip_without_venv": "warn",
+      "block_no_verify": "block",
+      "warn_sudo": "off",
+      "block_force_push": "warn",
+      "block_git_reset_hard": "warn",
+      "block_push_protected_branch": "block",
+      "block_git_clean": "warn",
+      "block_git_checkout_discard": "warn",
+      "block_destructive_sql": "block",
+      "block_branch_delete_protected": "block"
+    },
+    "editDiscipline": {
+      "warn_large_edits": "warn",
+      "warn_write_overwrites": "warn",
+      "warn_function_deletion": "warn",
+      "warn_missing_file_header": "off",
+      "block_delete_with_callers": "warn"
+    },
+    "context": {
+      "session_init_injection": "on",
+      "state_preserve_on_compact": "on",
+      "context_restore_on_compact": "on",
+      "session_save_on_end": "on",
+      "subagent_rule_injection": "on"
+    },
+    "analysis": {
+      "warn_silent_error_swallowing": "warn",
+      "warn_missing_type_hints": "warn",
+      "warn_bare_except": "warn",
+      "warn_print_in_source": "warn",
+      "warn_console_log": "warn",
+      "warn_any_type": "off",
+      "warn_naive_datetime": "warn",
+      "warn_missing_future_annotations": "off",
+      "warn_remaining_stubs": "warn",
+      "warn_missing_logging": "off",
+      "deep_ast_analysis": "off",
+      "error_logging": "on",
+      "context_map_build": "off",
+      "run_post_edit_linters": "on"
+    }
+  },
+  "strict": {
+    "codeQuality": {
+      "block_standalone_pass": "block",
+      "block_not_implemented": "block",
+      "block_todo_comments": "block",
+      "block_meaningless_assertions": "block",
+      "block_debug_prints": "block",
+      "block_empty_functions": "block",
+      "block_skipped_tests": "block",
+      "block_unsafe_deserialization": "block",
+      "block_unsafe_commands": "block",
+      "block_scope_reduction_comments": "block",
+      "warn_ssl_bypass": "warn",
+      "warn_pickle_usage": "warn"
+    },
+    "security": {
+      "block_openai_stripe_keys": "block",
+      "block_github_tokens": "block",
+      "block_slack_tokens": "block",
+      "block_aws_keys": "block",
+      "block_generic_credentials": "block",
+      "block_jwt_tokens": "block",
+      "block_google_api_keys": "block",
+      "block_private_keys": "block",
+      "block_db_connection_strings": "block"
+    },
+    "workflow": {
+      "require_pre_edit_checklist": "block",
+      "inject_task_spec_on_allow": "on",
+      "warn_scope_reduction_prompt": "warn",
+      "enforce_numbered_lists": "warn",
+      "completion_check": "warn",
+      "task_completion_evidence": "warn",
+      "task_automark_on_commit": "on",
+      "inject_task_list_on_start": "on",
+      "inject_task_list_on_compact": "on",
+      "detect_additive_connectors": "warn"
+    },
+    "safetyNet": {
+      "block_brew_on_linux": "block",
+      "block_bare_python": "block",
+      "block_dangerous_rm": "block",
+      "warn_pip_without_venv": "warn",
+      "block_no_verify": "block",
+      "warn_sudo": "warn",
+      "block_force_push": "block",
+      "block_git_reset_hard": "block",
+      "block_push_protected_branch": "block",
+      "block_git_clean": "block",
+      "block_git_checkout_discard": "block",
+      "block_destructive_sql": "block",
+      "block_branch_delete_protected": "block"
+    },
+    "editDiscipline": {
+      "warn_large_edits": "warn",
+      "warn_write_overwrites": "warn",
+      "warn_function_deletion": "warn",
+      "warn_missing_file_header": "warn",
+      "block_delete_with_callers": "block"
+    },
+    "context": {
+      "session_init_injection": "on",
+      "state_preserve_on_compact": "on",
+      "context_restore_on_compact": "on",
+      "session_save_on_end": "on",
+      "subagent_rule_injection": "on"
+    },
+    "analysis": {
+      "warn_silent_error_swallowing": "warn",
+      "warn_missing_type_hints": "warn",
+      "warn_bare_except": "warn",
+      "warn_print_in_source": "warn",
+      "warn_console_log": "warn",
+      "warn_any_type": "warn",
+      "warn_naive_datetime": "warn",
+      "warn_missing_future_annotations": "warn",
+      "warn_remaining_stubs": "warn",
+      "warn_missing_logging": "warn",
+      "deep_ast_analysis": "on",
+      "error_logging": "on",
+      "context_map_build": "on",
+      "run_post_edit_linters": "on"
+    }
+  },
+  "paranoid": {
+    "codeQuality": {
+      "block_standalone_pass": "block",
+      "block_not_implemented": "block",
+      "block_todo_comments": "block",
+      "block_meaningless_assertions": "block",
+      "block_debug_prints": "block",
+      "block_empty_functions": "block",
+      "block_skipped_tests": "block",
+      "block_unsafe_deserialization": "block",
+      "block_unsafe_commands": "block",
+      "block_scope_reduction_comments": "block",
+      "warn_ssl_bypass": "block",
+      "warn_pickle_usage": "block"
+    },
+    "security": {
+      "block_openai_stripe_keys": "block",
+      "block_github_tokens": "block",
+      "block_slack_tokens": "block",
+      "block_aws_keys": "block",
+      "block_generic_credentials": "block",
+      "block_jwt_tokens": "block",
+      "block_google_api_keys": "block",
+      "block_private_keys": "block",
+      "block_db_connection_strings": "block"
+    },
+    "workflow": {
+      "require_pre_edit_checklist": "block",
+      "inject_task_spec_on_allow": "on",
+      "warn_scope_reduction_prompt": "warn",
+      "enforce_numbered_lists": "warn",
+      "completion_check": "warn",
+      "task_completion_evidence": "warn",
+      "task_automark_on_commit": "on",
+      "inject_task_list_on_start": "on",
+      "inject_task_list_on_compact": "on",
+      "detect_additive_connectors": "warn"
+    },
+    "safetyNet": {
+      "block_brew_on_linux": "block",
+      "block_bare_python": "block",
+      "block_dangerous_rm": "block",
+      "warn_pip_without_venv": "warn",
+      "block_no_verify": "block",
+      "warn_sudo": "warn",
+      "block_force_push": "block",
+      "block_git_reset_hard": "block",
+      "block_push_protected_branch": "block",
+      "block_git_clean": "block",
+      "block_git_checkout_discard": "block",
+      "block_destructive_sql": "block",
+      "block_branch_delete_protected": "block"
+    },
+    "editDiscipline": {
+      "warn_large_edits": "block",
+      "warn_write_overwrites": "block",
+      "warn_function_deletion": "block",
+      "warn_missing_file_header": "warn",
+      "block_delete_with_callers": "block"
+    },
+    "context": {
+      "session_init_injection": "on",
+      "state_preserve_on_compact": "on",
+      "context_restore_on_compact": "on",
+      "session_save_on_end": "on",
+      "subagent_rule_injection": "on"
+    },
+    "analysis": {
+      "warn_silent_error_swallowing": "warn",
+      "warn_missing_type_hints": "warn",
+      "warn_bare_except": "warn",
+      "warn_print_in_source": "warn",
+      "warn_console_log": "warn",
+      "warn_any_type": "warn",
+      "warn_naive_datetime": "warn",
+      "warn_missing_future_annotations": "warn",
+      "warn_remaining_stubs": "warn",
+      "warn_missing_logging": "warn",
+      "deep_ast_analysis": "on",
+      "error_logging": "on",
+      "context_map_build": "on",
+      "run_post_edit_linters": "on"
+    }
+  }
+}
