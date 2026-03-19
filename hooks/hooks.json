@@ -1,5 +1,4 @@
 {
-  "description": "Sentinel: Universal AI code quality enforcement hooks",
   "hooks": {
     "UserPromptSubmit": [
       {
