@@ -46,6 +46,17 @@ if [[ -n "$PROJECT_ROOT" ]]; then
     fi
   fi
 
+  # 4.5. Build context map (background, non-blocking)
+  CONTEXT_MAP_PY="${SCRIPT_DIR}/build-context-map.py"
+  if command -v python3 &>/dev/null && [[ -f "$CONTEXT_MAP_PY" ]]; then
+    touch "${PROJECT_ROOT}/.sentinel/context-map.building" 2>/dev/null
+    (python3 "$CONTEXT_MAP_PY" --root "$PROJECT_ROOT" --max-files 500 --timeout 10 2>/dev/null; rm -f "${PROJECT_ROOT}/.sentinel/context-map.building" 2>/dev/null) &
+    CTXMAP_PID=$!
+    # Non-blocking — don't wait. Map will be ready for deny-dummy checks.
+    # Disown so session-init doesn't wait for it
+    disown "$CTXMAP_PID" 2>/dev/null || true
+  fi
+
   # 5. Current task status
   TASK_FILE="${PROJECT_ROOT}/.sentinel/current-task.json"
   if [[ -f "$TASK_FILE" ]]; then
@@ -56,6 +67,38 @@ if [[ -n "$PROJECT_ROOT" ]]; then
     echo "  Why: ${TASK_WHY}"
     echo "  → Resume this task or clean up .sentinel/current-task.json"
     echo ""
+  fi
+
+  # 5.5. Task list injection
+  TASK_LIST_ENABLED=$(sentinel_read_config '.taskList.enabled' 'true')
+  INJECT_ON_START=$(sentinel_read_config '.taskList.injectOnSessionStart' 'true')
+  if [[ "$TASK_LIST_ENABLED" == "true" && "$INJECT_ON_START" == "true" ]]; then
+    TASK_LIST_FILE=$(sentinel_find_task_list)
+    if [[ -n "$TASK_LIST_FILE" ]]; then
+      PENDING_COUNT=$(sentinel_task_count "pending")
+      INPROG_COUNT=$(sentinel_task_count "inProgress")
+      DONE_COUNT=$(sentinel_task_count "done")
+
+      echo "=== TASK LIST STATUS: ${PENDING_COUNT} pending / ${INPROG_COUNT} in-progress / ${DONE_COUNT} done ==="
+
+      # Show in-progress items first (highest priority — resume these)
+      if [[ "$INPROG_COUNT" -gt 0 ]]; then
+        echo "In Progress [~]:"
+        sentinel_task_list_items "inProgress" | sed 's/^/  /'
+        echo ""
+      fi
+
+      # Show pending items (up to maxInjectItems)
+      if [[ "$PENDING_COUNT" -gt 0 ]]; then
+        MAX_ITEMS=$(sentinel_read_config '.taskList.maxInjectItems' '30')
+        echo "Pending [ ] (next ${MAX_ITEMS}):"
+        sentinel_task_list_items "pending" "$MAX_ITEMS" | sed 's/^/  /'
+        echo ""
+      fi
+
+      echo "ENFORCEMENT: Read unchecked items. Implement per spec. Mark [x] + commit hash when done."
+      echo ""
+    fi
   fi
 
   # 6. Uncommitted changes
@@ -115,7 +158,7 @@ if [[ -n "$COMPAT_ISSUES" ]]; then
 fi
 
 # 8. Version check (non-blocking, cached once per day)
-SENTINEL_VERSION="1.3.0"
+SENTINEL_VERSION="1.4.0"
 VERSION_CACHE="/tmp/.sentinel-version-check"
 VERSION_CHECK_INTERVAL=86400  # 24 hours
 

@@ -12,33 +12,53 @@ sentinel_check_enabled "error_logger"
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
 
-[[ "$TOOL_NAME" != "Bash" ]] && exit 0
+# Skip user-cancelled operations
+IS_INTERRUPT=$(echo "$INPUT" | jq -r '.is_interrupt // false' 2>/dev/null)
+[[ "$IS_INTERRUPT" == "true" ]] && exit 0
 
-# Check exit code
-EXIT_CODE=$(echo "$INPUT" | jq -r '.tool_response.exit_code // .tool_response.exitCode // 0' 2>/dev/null)
-[[ "$EXIT_CODE" == "0" || -z "$EXIT_CODE" ]] && exit 0
+if [[ "$TOOL_NAME" == "Bash" ]]; then
+  # PostToolUse path: check exit code
+  EXIT_CODE=$(echo "$INPUT" | jq -r '.tool_response.exit_code // .tool_response.exitCode // 0' 2>/dev/null)
+  [[ "$EXIT_CODE" == "0" || -z "$EXIT_CODE" ]] && exit 0
 
-COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
-STDERR=$(echo "$INPUT" | jq -r '.tool_response.stderr // empty' 2>/dev/null)
-STDOUT=$(echo "$INPUT" | jq -r '.tool_response.stdout // empty' 2>/dev/null)
-OUTPUT="${STDERR}${STDOUT}"
+  COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
+  STDERR=$(echo "$INPUT" | jq -r '.tool_response.stderr // empty' 2>/dev/null)
+  STDOUT=$(echo "$INPUT" | jq -r '.tool_response.stdout // empty' 2>/dev/null)
+  OUTPUT="${STDERR}${STDOUT}"
 
-# Classify error
-ERROR_TYPE="unknown"
-if echo "$OUTPUT" | grep -qiP 'syntax.?error|unexpected.?token|parse.?error'; then
-  ERROR_TYPE="syntax"
-elif echo "$OUTPUT" | grep -qiP 'import.?error|module.?not.?found|cannot.?find.?module|no.?module.?named'; then
-  ERROR_TYPE="import"
-elif echo "$OUTPUT" | grep -qiP 'permission.?denied|EACCES|operation.?not.?permitted'; then
-  ERROR_TYPE="permission"
-elif echo "$OUTPUT" | grep -qiP 'connection.?refused|ECONNREFUSED|network|timeout|ETIMEDOUT'; then
-  ERROR_TYPE="network"
-elif echo "$OUTPUT" | grep -qiP 'type.?error|TypeError|is.?not.?a.?function|undefined.?is.?not'; then
-  ERROR_TYPE="type"
-elif echo "$OUTPUT" | grep -qiP 'FAILED|AssertionError|test.*fail|FAIL'; then
-  ERROR_TYPE="test"
-elif echo "$OUTPUT" | grep -qiP 'out.?of.?memory|heap|MemoryError|ENOMEM'; then
-  ERROR_TYPE="memory"
+  # Classify error
+  ERROR_TYPE="unknown"
+  if echo "$OUTPUT" | grep -qiP 'syntax.?error|unexpected.?token|parse.?error'; then
+    ERROR_TYPE="syntax"
+  elif echo "$OUTPUT" | grep -qiP 'import.?error|module.?not.?found|cannot.?find.?module|no.?module.?named'; then
+    ERROR_TYPE="import"
+  elif echo "$OUTPUT" | grep -qiP 'permission.?denied|EACCES|operation.?not.?permitted'; then
+    ERROR_TYPE="permission"
+  elif echo "$OUTPUT" | grep -qiP 'connection.?refused|ECONNREFUSED|network|timeout|ETIMEDOUT'; then
+    ERROR_TYPE="network"
+  elif echo "$OUTPUT" | grep -qiP 'type.?error|TypeError|is.?not.?a.?function|undefined.?is.?not'; then
+    ERROR_TYPE="type"
+  elif echo "$OUTPUT" | grep -qiP 'FAILED|AssertionError|test.*fail|FAIL'; then
+    ERROR_TYPE="test"
+  elif echo "$OUTPUT" | grep -qiP 'out.?of.?memory|heap|MemoryError|ENOMEM'; then
+    ERROR_TYPE="memory"
+  fi
+
+  COMMAND_SHORT=$(echo "$COMMAND" | head -1 | cut -c1-100)
+  OUTPUT_SHORT=$(echo "$OUTPUT" | head -3 | tr '\n' ' ' | cut -c1-200)
+  DISPLAY_CMD="$COMMAND_SHORT"
+else
+  # PostToolUseFailure path: non-Bash tools
+  ERROR_FIELD=$(echo "$INPUT" | jq -r '.error // empty' 2>/dev/null)
+  [[ -z "$ERROR_FIELD" ]] && exit 0
+
+  EXIT_CODE="fail"
+  OUTPUT="$ERROR_FIELD"
+  ERROR_TYPE="tool-failure"
+  COMMAND="${TOOL_NAME}"
+  COMMAND_SHORT="${TOOL_NAME}"
+  OUTPUT_SHORT=$(echo "$ERROR_FIELD" | head -3 | tr '\n' ' ' | cut -c1-200)
+  DISPLAY_CMD="${TOOL_NAME}"
 fi
 
 # Find project root and log
@@ -52,13 +72,11 @@ LOG_FILE="${LOG_DIR}/error-log.jsonl"
 # Create log entry (using jq for safe JSON construction — no injection via quotes/backslashes)
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 ERROR_HASH=$(echo "${COMMAND}${ERROR_TYPE}" | md5sum | cut -c1-8)
-COMMAND_SHORT=$(echo "$COMMAND" | head -1 | cut -c1-100)
-OUTPUT_SHORT=$(echo "$OUTPUT" | head -3 | tr '\n' ' ' | cut -c1-200)
 
 # Write to log — jq --arg safely escapes all special characters
 jq -n --arg ts "$TIMESTAMP" \
       --arg type "$ERROR_TYPE" \
-      --argjson exit "$EXIT_CODE" \
+      --arg exit "$EXIT_CODE" \
       --arg hash "$ERROR_HASH" \
       --arg cmd "$COMMAND_SHORT" \
       --arg output "$OUTPUT_SHORT" \
@@ -67,8 +85,8 @@ jq -n --arg ts "$TIMESTAMP" \
 
 # === MANDATORY ERROR RESPONSE — injected on EVERY error ===
 # Sanitize user-controlled output (uses sentinel_sanitize from _common.sh)
-echo "🚨 [Sentinel Error-Logger] Command failed (${ERROR_TYPE}, exit ${EXIT_CODE})"
-echo "  Command: $(sentinel_sanitize "$COMMAND_SHORT")"
+echo "🚨 [Sentinel Error-Logger] Tool failed (${ERROR_TYPE}, exit ${EXIT_CODE})"
+echo "  Tool/Command: $(sentinel_sanitize "$DISPLAY_CMD")"
 echo "  Output: $(sentinel_sanitize "$OUTPUT_SHORT")"
 echo ""
 echo "  ⛔ DO NOT SKIP THIS ERROR. DO NOT MOVE ON."
@@ -86,14 +104,15 @@ if [[ -f "$LOG_FILE" ]]; then
   [[ -z "$TOTAL_ERRORS" ]] && TOTAL_ERRORS=0
 fi
 
-# Check for repeated failures (same error hash 3+ times)
+# Check for repeated failures (same error hash N+ times, configurable)
+REPEAT_LIMIT=$(sentinel_read_config '.error_repeat_limit' '3')
 REPEAT_COUNT=0
 if [[ -f "$LOG_FILE" ]]; then
   REPEAT_COUNT=$(grep -c "\"hash\":\"${ERROR_HASH}\"" "$LOG_FILE" 2>/dev/null || true)
   [[ -z "$REPEAT_COUNT" || "$REPEAT_COUNT" == *$'\n'* ]] && REPEAT_COUNT=0
 fi
 
-if [[ $REPEAT_COUNT -ge 3 ]]; then
+if [[ $REPEAT_COUNT -ge $REPEAT_LIMIT ]]; then
   echo "🔴 [Sentinel] SAME ERROR ${REPEAT_COUNT}x — YOU ARE STUCK"
   echo "  You are repeating the exact same failed approach."
   echo "  STOP. You clearly cannot solve this alone."

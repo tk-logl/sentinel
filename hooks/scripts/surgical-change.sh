@@ -19,17 +19,11 @@ fi
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 [[ -z "$FILE_PATH" ]] && exit 0
 
-# Only check source code
-EXT="${FILE_PATH##*.}"
-case "$EXT" in
-  py|ts|tsx|js|jsx|go|rs|java|c|cpp|svelte|vue) ;;
-  *) exit 0 ;;
-esac
+# Only check source code (config-driven extensions)
+if ! sentinel_is_source_file "$FILE_PATH"; then exit 0; fi
 
-# Skip sentinel/config files
-case "$FILE_PATH" in
-  */.sentinel/*|*/.claude/*|*/.omc/*|*/.github/*) exit 0 ;;
-esac
+# Skip test files, config dirs, and user-configured skip patterns
+if sentinel_should_skip "$FILE_PATH"; then exit 0; fi
 
 WARNINGS=""
 
@@ -56,8 +50,9 @@ if [[ "$TOOL_NAME" == "Edit" ]]; then
     OLD_LINES=$(echo "$OLD_STRING" | wc -l)
     NEW_LINES=$(echo "$NEW_STRING" | wc -l)
 
-    # Warn on large replacements
-    if [[ $OLD_LINES -gt 15 ]]; then
+    # Warn on large replacements (configurable threshold)
+    MAX_LINES=$(sentinel_read_config '.surgical_change_max_lines' '15')
+    if [[ $OLD_LINES -gt $MAX_LINES ]]; then
       WARNINGS="${WARNINGS}⚠️  Large edit: replacing ${OLD_LINES} lines → ${NEW_LINES} lines\n"
       WARNINGS="${WARNINGS}   Break this into smaller, focused edits (one logical change per Edit call).\n\n"
     fi
@@ -68,7 +63,7 @@ if [[ "$TOOL_NAME" == "Edit" ]]; then
         FN_NAME=$(echo "$OLD_STRING" | grep -oP '(?:def |class |function )\K\w+' | head -1)
         if [[ -n "$FN_NAME" ]]; then
           WARNINGS="${WARNINGS}⚠️  Deleting function/class: ${FN_NAME}\n"
-          WARNINGS="${WARNINGS}   Before deleting, run: grep -rn \"${FN_NAME}\" . --include='*.${EXT}'\n"
+          WARNINGS="${WARNINGS}   Before deleting, run: grep -rn \"${FN_NAME}\" . --include='*.${FILE_PATH##*.}'\n"
           WARNINGS="${WARNINGS}   Ensure zero callers/importers exist before removing.\n\n"
         fi
       fi

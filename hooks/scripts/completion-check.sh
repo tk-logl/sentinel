@@ -7,15 +7,21 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/_common.sh"
 sentinel_require_jq "completion-check"
 sentinel_require_pcre "completion-check"
+sentinel_check_enabled "completion_check"
 
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 [[ -z "$PROJECT_ROOT" ]] && exit 0
+
+# Build source extension pattern from config (consistent with sentinel_is_source_file)
+_SRC_EXTS=$(sentinel_read_config \
+  'if .source_extensions then (.source_extensions | join("|")) else empty end' \
+  "py|ts|tsx|js|jsx|go|rs|java|c|cpp|svelte|vue")
 
 CRITICAL=""
 WARNINGS=""
 
 # 1. Uncommitted source changes
-DIRTY_SRC=$(git status --porcelain 2>/dev/null | grep -P '\.(py|ts|tsx|js|jsx|go|rs|java|c|cpp|svelte|vue)$' | head -10)
+DIRTY_SRC=$(git status --porcelain 2>/dev/null | grep -P "\\.(${_SRC_EXTS})$" | head -10)
 if [[ -n "$DIRTY_SRC" ]]; then
   DIRTY_COUNT=$(echo "$DIRTY_SRC" | wc -l)
   CRITICAL="${CRITICAL}🔴 ${DIRTY_COUNT} UNCOMMITTED source file(s) — commit or explain:\n"
@@ -144,7 +150,28 @@ if [[ -n "$CHANGED_FILES" ]]; then
   fi
 fi
 
-# Output
+# 9. Task list: in-progress items still open (MUST run before output section)
+TASK_LIST_FILE=$(sentinel_find_task_list 2>/dev/null)
+if [[ -n "$TASK_LIST_FILE" ]]; then
+  INPROG_COUNT=$(sentinel_task_count "inProgress" 2>/dev/null)
+  PENDING_COUNT=$(sentinel_task_count "pending" 2>/dev/null)
+
+  if [[ "$INPROG_COUNT" -gt 0 ]]; then
+    INPROG_ITEMS=$(sentinel_task_list_items "inProgress" 5 2>/dev/null)
+    CRITICAL="${CRITICAL}🔴 ${INPROG_COUNT} task(s) still IN-PROGRESS [~]:\n"
+    while IFS= read -r line; do
+      [[ -z "$line" ]] && continue
+      CRITICAL="${CRITICAL}  ${line}\n"
+    done <<< "$INPROG_ITEMS"
+    CRITICAL="${CRITICAL}\n"
+  fi
+
+  if [[ "$PENDING_COUNT" -gt 0 ]]; then
+    WARNINGS="${WARNINGS}⚠️  ${PENDING_COUNT} task(s) still PENDING in task list\n\n"
+  fi
+fi
+
+# Output (after ALL checks including task-list)
 if [[ -n "$CRITICAL" || -n "$WARNINGS" ]]; then
   echo "🛑 [Sentinel Completion Check] — STOP. Review before claiming done."
   echo ""

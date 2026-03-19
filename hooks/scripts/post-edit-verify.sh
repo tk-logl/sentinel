@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/_common.sh"
 sentinel_require_jq "post-edit-verify"
 sentinel_require_pcre "post-edit-verify"
+sentinel_check_enabled "post_edit_verify"
 
 INPUT=$(cat)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
@@ -18,17 +19,14 @@ fi
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 [[ -z "$FILE_PATH" || ! -f "$FILE_PATH" ]] && exit 0
 
-# Only check source code
-EXT="${FILE_PATH##*.}"
-case "$EXT" in
-  py|ts|tsx|js|jsx|go|rs) ;;
-  *) exit 0 ;;
-esac
+# Only check source code (config-driven extensions — fixes D6: was missing java,c,cpp,svelte,vue)
+if ! sentinel_is_source_file "$FILE_PATH"; then exit 0; fi
 
-# Skip test/config files
-if echo "$FILE_PATH" | grep -qP '(\.test\.|\.spec\.|/tests/|/test_|_test\.|\.sentinel|\.claude|\.omc)'; then
-  exit 0
-fi
+# Skip test files, config dirs, and user-configured skip patterns
+if sentinel_should_skip "$FILE_PATH"; then exit 0; fi
+
+# Extension still needed for language-specific checks below
+EXT="${FILE_PATH##*.}"
 
 WARNINGS=""
 

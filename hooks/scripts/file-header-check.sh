@@ -19,17 +19,14 @@ fi
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 [[ -z "$FILE_PATH" || ! -f "$FILE_PATH" ]] && exit 0
 
-# Only check source code
-EXT="${FILE_PATH##*.}"
-case "$EXT" in
-  py|ts|tsx|js|jsx|go|rs|java) ;;
-  *) exit 0 ;;
-esac
+# Only check source code (config-driven extensions)
+if ! sentinel_is_source_file "$FILE_PATH"; then exit 0; fi
 
-# Skip test/config files
-if echo "$FILE_PATH" | grep -qP '(\.test\.|\.spec\.|/tests/|/test_|_test\.|\.sentinel|\.claude|\.omc)'; then
-  exit 0
-fi
+# Skip test files, config dirs, and user-configured skip patterns
+if sentinel_should_skip "$FILE_PATH"; then exit 0; fi
+
+# Extension still needed for language-specific header format below
+EXT="${FILE_PATH##*.}"
 
 # Read config for threshold
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)

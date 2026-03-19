@@ -337,3 +337,234 @@ sentinel_stats_report() {
 
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
+
+# ─── Config Value Reader (cached) ───
+# Reads arbitrary values from sentinel config JSON.
+# Usage: val=$(sentinel_read_config '.taskList.enabled' 'true')
+_sentinel_config_cache=""
+sentinel_read_config() {
+  local jq_expr="${1:-.}"
+  local default_val="${2:-}"
+  [[ "$SENTINEL_NO_JQ" == "1" ]] && { echo "$default_val"; return 0; }
+
+  if [[ -z "$_sentinel_config_cache" ]]; then
+    local project_root
+    project_root=$(git rev-parse --show-toplevel 2>/dev/null)
+    if [[ -n "$project_root" && -f "${project_root}/.sentinel/config.json" ]]; then
+      _sentinel_config_cache="${project_root}/.sentinel/config.json"
+    elif [[ -n "$SENTINEL_PLUGIN_ROOT" && -f "${SENTINEL_PLUGIN_ROOT}/config/sentinel.json" ]]; then
+      _sentinel_config_cache="${SENTINEL_PLUGIN_ROOT}/config/sentinel.json"
+    elif [[ -n "$SCRIPT_DIR" && -f "${SCRIPT_DIR}/../../config/sentinel.json" ]]; then
+      _sentinel_config_cache="${SCRIPT_DIR}/../../config/sentinel.json"
+    else
+      echo "$default_val"
+      return 0
+    fi
+  fi
+
+  local result
+  result=$(jq -r "${jq_expr} // empty" "$_sentinel_config_cache" 2>/dev/null)
+  echo "${result:-$default_val}"
+}
+
+# ─── Source File Detection ───
+# Checks if a file path is a source code file (by extension from config).
+# Usage: if sentinel_is_source_file "$FILE_PATH"; then ...
+sentinel_is_source_file() {
+  local file_path="$1"
+  [[ -z "$file_path" ]] && return 1
+  local ext="${file_path##*.}"
+  [[ "$ext" == "$file_path" ]] && return 1  # no extension
+
+  local extensions
+  extensions=$(sentinel_read_config \
+    'if .source_extensions then (.source_extensions | join(",")) else empty end' \
+    "py,ts,tsx,js,jsx,go,rs,java,c,cpp,svelte,vue")
+
+  [[ ",$extensions," == *",$ext,"* ]] && return 0
+  return 1
+}
+
+# ─── Skip Pattern Detection ───
+# Checks if a file should be skipped (test files, config dirs, fixtures, etc.).
+# Reads skip_patterns from config for project-specific exclusions.
+# Usage: if sentinel_should_skip "$FILE_PATH"; then exit 0; fi
+sentinel_should_skip() {
+  local file_path="$1"
+  [[ -z "$file_path" ]] && return 1
+
+  # Built-in skip dirs (always applied)
+  # Prepend / so patterns match both "src/.claude/x" and ".claude/x"
+  local check_path="/${file_path}"
+  case "$check_path" in
+    */.sentinel/*|*/.claude/*|*/.omc/*|*/.github/*) return 0 ;;
+    */node_modules/*|*/__pycache__/*) return 0 ;;
+    */fixtures/*|*/mocks/*) return 0 ;;
+  esac
+
+  # Test file detection
+  if echo "$file_path" | grep -qP '(\.test\.|\.spec\.|/tests/|/test_|_test\.)'; then
+    return 0
+  fi
+
+  # Config-driven skip patterns (glob-style, converted to grep patterns)
+  local skip_json
+  skip_json=$(sentinel_read_config '.skip_patterns' '')
+  if [[ -n "$skip_json" && "$skip_json" != "null" ]]; then
+    local patterns
+    patterns=$(echo "$skip_json" | jq -r '.[]' 2>/dev/null)
+    if [[ -n "$patterns" ]]; then
+      while IFS= read -r pat; do
+        [[ -z "$pat" ]] && continue
+        # Convert glob to grep: placeholder for **/, escape dots, restore, convert * and ?
+        local regex
+        regex=$(printf '%s' "$pat" | sed 's|\*\*/|__DSTAR__|g; s|\.|\\.|g; s|__DSTAR__|.*/|g; s|\*|[^/]*|g; s|\?|.|g')
+        if echo "$file_path" | grep -qE "$regex" 2>/dev/null; then
+          return 0
+        fi
+      done <<< "$patterns"
+    fi
+  fi
+
+  return 1
+}
+
+# ─── Task List Utilities ───
+# Generic task-list management for markdown checklists.
+# Supports auto-detection of task files and configurable ID patterns.
+
+_SENTINEL_TASK_LIST=""
+
+# Find the project's task list file.
+# Search order: config > .sentinel/tasks.md > .claude/action-list.md > .claude/tasks.md > tasks.md
+# Returns: absolute path to task file (stdout), or exits 1 if not found.
+sentinel_find_task_list() {
+  [[ -n "$_SENTINEL_TASK_LIST" ]] && { echo "$_SENTINEL_TASK_LIST"; return 0; }
+
+  local project_root
+  project_root=$(git rev-parse --show-toplevel 2>/dev/null)
+  [[ -z "$project_root" ]] && return 1
+
+  # Check config first
+  local cfg_file
+  cfg_file=$(sentinel_read_config '.taskList.file' "auto")
+  if [[ "$cfg_file" != "auto" && -n "$cfg_file" && -f "${project_root}/${cfg_file}" ]]; then
+    _SENTINEL_TASK_LIST="${project_root}/${cfg_file}"
+    echo "$_SENTINEL_TASK_LIST"
+    return 0
+  fi
+
+  # Auto-detect in priority order
+  local candidates=(".sentinel/tasks.md" ".claude/action-list.md" ".claude/tasks.md" "tasks.md")
+  for c in "${candidates[@]}"; do
+    if [[ -f "${project_root}/${c}" ]]; then
+      _SENTINEL_TASK_LIST="${project_root}/${c}"
+      echo "$_SENTINEL_TASK_LIST"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+# Count task items by state.
+# Usage: pending=$(sentinel_task_count "pending")
+sentinel_task_count() {
+  local state="${1:-pending}"
+  local tf
+  tf=$(sentinel_find_task_list) || { echo 0; return 0; }
+
+  case "$state" in
+    pending)    grep -cP '^\s*- \[ \]' "$tf" 2>/dev/null || echo 0 ;;
+    inProgress) grep -cP '^\s*- \[~\]' "$tf" 2>/dev/null || echo 0 ;;
+    done)       grep -cP '^\s*- \[x\]' "$tf" 2>/dev/null || echo 0 ;;
+    *) echo 0 ;;
+  esac
+}
+
+# List task items by state (line_number:content format).
+# Usage: sentinel_task_list_items "pending" 10
+sentinel_task_list_items() {
+  local state="${1:-pending}" limit="${2:-999}"
+  local tf
+  tf=$(sentinel_find_task_list) || return 0
+
+  case "$state" in
+    pending)    grep -nP '^\s*- \[ \]' "$tf" 2>/dev/null | head -"$limit" ;;
+    inProgress) grep -nP '^\s*- \[~\]' "$tf" 2>/dev/null | head -"$limit" ;;
+    done)       grep -nP '^\s*- \[x\]' "$tf" 2>/dev/null | head -"$limit" ;;
+  esac
+}
+
+# Mark a task item to a new state. Finds by item_id substring match.
+# Usage: sentinel_task_mark "CRIT-2" "done" "fc06fca"
+sentinel_task_mark() {
+  local item_id="$1" new_state="$2" metadata="${3:-}"
+  local tf
+  tf=$(sentinel_find_task_list) || return 1
+  [[ -z "$item_id" || -z "$new_state" ]] && return 1
+
+  local marker
+  case "$new_state" in
+    done)       marker='[x]' ;;
+    inProgress) marker='[~]' ;;
+    pending)    marker='[ ]' ;;
+    *) return 1 ;;
+  esac
+
+  # Find the first line containing this item_id
+  local line_num
+  line_num=$(grep -n "$item_id" "$tf" 2>/dev/null | head -1 | cut -d: -f1)
+  [[ -z "$line_num" ]] && return 1
+
+  # Replace the checkbox marker on that specific line
+  sed -i "${line_num}s/- \[[ x~]\]/- ${marker}/" "$tf"
+
+  # Append metadata (e.g., commit hash) if marking done
+  if [[ "$new_state" == "done" && -n "$metadata" ]]; then
+    local safe_meta
+    safe_meta=$(printf '%s' "$metadata" | sed 's/[&/\]/\\&/g')
+    local safe_id
+    safe_id=$(printf '%s' "$item_id" | sed 's/[&/\]/\\&/g')
+    # Try bold format (**ID**) first, then plain ID
+    if sed -n "${line_num}p" "$tf" | grep -q "\*\*${item_id}\*\*" 2>/dev/null; then
+      sed -i "${line_num}s/\*\*${safe_id}\*\*/\*\*${safe_id}\*\* ${safe_meta}/" "$tf"
+    else
+      sed -i "${line_num}s/${safe_id}/${safe_id} ${safe_meta}/" "$tf" 2>/dev/null || true
+    fi
+  fi
+
+  return 0
+}
+
+# Extract task IDs from text (e.g., commit messages).
+# Uses config idPattern or default [A-Z]+-[0-9]+.
+# Usage: ids=$(sentinel_task_extract_ids "fix: CRIT-2 artifact crash")
+sentinel_task_extract_ids() {
+  local text="$1"
+  [[ -z "$text" ]] && return 0
+
+  local pattern
+  pattern=$(sentinel_read_config '.taskList.idPattern' '[A-Z]+-[0-9]+')
+
+  echo "$text" | grep -oP "$pattern" 2>/dev/null | sort -u
+}
+
+# Extract the full spec block for a task item.
+# Returns from the item_id line until the next checklist item or section header.
+# Usage: spec=$(sentinel_task_get_spec "CRIT-2")
+sentinel_task_get_spec() {
+  local item_id="$1"
+  local tf
+  tf=$(sentinel_find_task_list) || return 1
+  [[ -z "$item_id" ]] && return 1
+
+  # Use awk for efficient single-pass extraction
+  awk -v id="$item_id" '
+    index($0, id) > 0 && !found { found = 1 }
+    found && /^\s*- \[[ x~]\]/ && !(index($0, id) > 0) { exit }
+    found && /^##[[:space:]]/ { exit }
+    found && /^---/ { exit }
+    found { print }
+  ' "$tf"
+}

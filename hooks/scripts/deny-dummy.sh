@@ -19,22 +19,11 @@ fi
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 [[ -z "$FILE_PATH" ]] && exit 0
 
-# Only check source code
-EXT="${FILE_PATH##*.}"
-case "$EXT" in
-  py|ts|tsx|js|jsx|go|rs|java|c|cpp|svelte|vue) ;;
-  *) exit 0 ;;
-esac
+# Only check source code (config-driven extensions)
+if ! sentinel_is_source_file "$FILE_PATH"; then exit 0; fi
 
-# Skip test files — assert patterns are valid in tests
-if echo "$FILE_PATH" | grep -qP '(\.test\.|\.spec\.|/tests/|/test_|_test\.)'; then
-  exit 0
-fi
-
-# Skip sentinel/config/hook files
-case "$FILE_PATH" in
-  */.sentinel/*|*/.claude/*|*/.omc/*|*/.github/*) exit 0 ;;
-esac
+# Skip test files, config dirs, and user-configured skip patterns
+if sentinel_should_skip "$FILE_PATH"; then exit 0; fi
 
 # Get the content being written/edited
 if [[ "$TOOL_NAME" == "Write" ]]; then
@@ -45,10 +34,65 @@ fi
 
 [[ -z "$CONTENT" ]] && exit 0
 
+# ─── Context Map Integration ───
+# If context-map.json exists, use AST-based classifications to allow
+# intentional noops (teardown, cleanup) and abstract methods.
+# Prevents false positives that regex alone cannot avoid.
+CTXMAP_PASS_OK=false
+CTXMAP_RAISE_OK=false
+
+PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+if [[ -n "$PROJECT_ROOT" && -f "${PROJECT_ROOT}/.sentinel/context-map.json" && ! -f "${PROJECT_ROOT}/.sentinel/context-map.building" ]]; then
+  # Compute relative path from project root
+  REL_PATH="${FILE_PATH#"${PROJECT_ROOT}"/}"
+
+  # Check if this file has context-map data
+  FILE_FUNCS=$(jq -r --arg f "$REL_PATH" '(.files[$f].functions // {}) | to_entries[] | "\(.key)=\(.value.classification)"' \
+    "${PROJECT_ROOT}/.sentinel/context-map.json" 2>/dev/null)
+
+  if [[ -n "$FILE_FUNCS" ]]; then
+    # Extract function names from the content being written
+    CONTENT_FUNCS=$(echo "$CONTENT" | grep -oP '(?<=def )\w+' 2>/dev/null || true)
+
+    if [[ -n "$CONTENT_FUNCS" ]]; then
+      ALL_PASS_OK=true
+      ALL_RAISE_OK=true
+
+      while IFS= read -r fname; do
+        [[ -z "$fname" ]] && continue
+        # Match function name (direct or Class.method format)
+        # Function names are [a-zA-Z0-9_]+ so no regex escaping needed
+        MATCHES=$(echo "$FILE_FUNCS" | grep -E "(^|\.)${fname}=" 2>/dev/null || true)
+        if [[ -n "$MATCHES" ]]; then
+          # If ANY match is abstract/intentional_noop, exempt this function
+          # (benefit of the doubt — regex fallback still catches truly wrong cases)
+          HAS_EXEMPT=false
+          while IFS= read -r match_line; do
+            case "${match_line##*=}" in
+              abstract|intentional_noop) HAS_EXEMPT=true ;;
+            esac
+          done <<< "$MATCHES"
+          if ! $HAS_EXEMPT; then
+            ALL_PASS_OK=false; ALL_RAISE_OK=false
+          fi
+        else
+          # Function not in context-map — cannot exempt it
+          ALL_PASS_OK=false
+          ALL_RAISE_OK=false
+        fi
+      done <<< "$CONTENT_FUNCS"
+
+      $ALL_PASS_OK && CTXMAP_PASS_OK=true
+      $ALL_RAISE_OK && CTXMAP_RAISE_OK=true
+    fi
+  fi
+fi
+
 VIOLATIONS=""
 
 # 1. Standalone pass (Python) — not in @abstractmethod, __del__, finally, or cleanup
-if echo "$CONTENT" | grep -qP '^\s+pass\s*$'; then
+# Context-map override: if ALL functions in content are abstract/intentional_noop, skip
+if ! $CTXMAP_PASS_OK && echo "$CONTENT" | grep -qP '^\s+pass\s*$'; then
   # Allow pass in: @abstractmethod, __del__, finally blocks, cleanup/teardown functions
   if ! echo "$CONTENT" | grep -qP '@abstractmethod|def __del__|def teardown|def tearDown|def cleanup|def close|finally\s*:'; then
     VIOLATIONS="${VIOLATIONS}  - 'pass' as standalone statement (implement the function body)\n"
@@ -56,7 +100,8 @@ if echo "$CONTENT" | grep -qP '^\s+pass\s*$'; then
 fi
 
 # 2. raise NotImplementedError without @abstractmethod
-if echo "$CONTENT" | grep -qP 'raise NotImplementedError'; then
+# Context-map override: if ALL functions in content are abstract/intentional_noop, skip
+if ! $CTXMAP_RAISE_OK && echo "$CONTENT" | grep -qP 'raise NotImplementedError'; then
   if ! echo "$CONTENT" | grep -qP '@abstractmethod'; then
     VIOLATIONS="${VIOLATIONS}  - 'raise NotImplementedError' without @abstractmethod (implement the logic)\n"
   fi

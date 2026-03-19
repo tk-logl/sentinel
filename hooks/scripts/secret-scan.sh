@@ -19,17 +19,16 @@ fi
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 [[ -z "$FILE_PATH" ]] && exit 0
 
-# Skip non-source files
+# Skip non-source and non-config files
+# Secret scan checks BOTH source code AND config files (broader than sentinel_is_source_file)
 EXT="${FILE_PATH##*.}"
 case "$EXT" in
-  py|ts|tsx|js|jsx|go|rs|java|c|cpp|env|yml|yaml|json|toml|ini|cfg) ;;
+  py|ts|tsx|js|jsx|go|rs|java|c|cpp|svelte|vue|env|yml|yaml|json|toml|ini|cfg) ;;
   *) exit 0 ;;
 esac
 
-# Skip test files with known fake credentials
-if echo "$FILE_PATH" | grep -qP '(\.test\.|\.spec\.|/tests/|/test_|_test\.|/fixtures/|/mocks/)'; then
-  exit 0
-fi
+# Skip test files, fixtures, config dirs, and user-configured skip patterns
+if sentinel_should_skip "$FILE_PATH"; then exit 0; fi
 
 # Get content
 if [[ "$TOOL_NAME" == "Write" ]]; then

@@ -9,7 +9,7 @@ Prevents 47 common AI coding mistakes. Automatically.
 [![CI](https://github.com/tk-logl/sentinel/actions/workflows/test.yml/badge.svg)](https://github.com/tk-logl/sentinel/actions/workflows/test.yml)
 [![ShellCheck](https://img.shields.io/badge/ShellCheck-passing-brightgreen)](https://www.shellcheck.net/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.3.0-orange)](https://github.com/tk-logl/sentinel/releases/tag/v1.3.0)
+[![Version](https://img.shields.io/badge/version-1.4.0-orange)](https://github.com/tk-logl/sentinel/releases/tag/v1.4.0)
 
 [Install](#install) · [How It Works](#how-it-works) · [Configuration](#configuration) · [FAQ](#faq)
 
@@ -42,7 +42,7 @@ claude plugin install github:tk-logl/sentinel
 /sentinel:init
 ```
 
-That's it. All 13 hooks are now active. No configuration required.
+That's it. All 19 hooks are now active. No configuration required.
 
 ## Demo: What You'll See
 
@@ -84,33 +84,44 @@ Never hardcode credentials. Use:
 
 ## How It Works
 
-Sentinel registers **13 hooks** across 7 Claude Code event types. They fire automatically — you don't call them.
+Sentinel registers **19 hooks** across 9 Claude Code event types. They fire automatically — you don't call them.
 
 ### Blocking Hooks (prevents the action)
 
 | Hook | Trigger | What It Blocks |
 |------|---------|---------------|
 | `pre-edit-gate` | Before Write/Edit | Source edits without `.sentinel/current-task.json` |
-| `deny-dummy` | Before Write/Edit | `pass`, `TODO`, `assert True`, debug prints, unsafe deserialization |
+| `deny-dummy` | Before Write/Edit | `pass`, `TODO`, `assert True`, debug prints, unsafe deserialization (context-map aware) |
 | `secret-scan` | Before Write/Edit | API keys (sk-, ghp_, AKIA, xoxb-, AIza, eyJ...), private keys, DB passwords |
+| `scope-reduction-guard` | Before Write/Edit | Scope reduction in code comments (21 Korean + 16 English + 5 Japanese patterns) |
 | `env-safety` | Before Bash | `brew` on Linux, bare `python`, `rm -rf /`, `--no-verify` |
 
 ### Warning Hooks (warns but allows)
 
 | Hook | Trigger | What It Warns About |
 |------|---------|-------------------|
-| `surgical-change` | Before Write/Edit | Large diffs (>15 lines), file overwrites, function deletion |
+| `surgical-change` | Before Write/Edit | Large diffs (configurable), file overwrites, function deletion |
 | `scope-guard` | User prompt | "for now", "simplified", "일단", "とりあえず" |
+| `task-scope-guard` | User prompt | Numbered task lists → enforces complete implementation |
 | `post-edit-verify` | After Write/Edit | Stubs, missing types, bare except, naive datetime |
 | `file-header-check` | After Write/Edit | Files >200 lines without descriptive headers |
-| `completion-check` | AI stops | Uncommitted changes, active tasks, TODO in changed files |
+| `task-completion-gate` | After TaskUpdate | Evidence check before marking tasks completed |
+| `completion-check` | AI stops | Uncommitted changes, active tasks, TODO in changed files, task-list status |
+
+### Task Lifecycle (v1.4.0)
+
+| Hook | Trigger | What It Does |
+|------|---------|-------------|
+| `task-automark` | After git commit | Auto-marks task IDs as `[x]` done in task list |
+| `subagent-context` | Before Task spawn | Injects quality rules into subagents |
 
 ### State Management
 
 | Hook | Trigger | What It Does |
 |------|---------|-------------|
-| `session-init` | Session start | Injects environment, previous state, error patterns |
-| `state-preserve` | Before compaction | Saves structured 5-section state |
+| `session-init` | Session start | Injects environment, previous state, task list, context map |
+| `state-preserve` | Before compaction | Saves fully auto-populated 5-section state |
+| `post-compact-restore` | After compaction | Re-injects task context + pre-compaction state |
 | `session-save` | Session end | Persists state for next session |
 | `error-logger` | After Bash | Classifies errors, detects repeated failures |
 
@@ -141,6 +152,36 @@ Sentinel registers **13 hooks** across 7 Claude Code event types. They fire auto
 **Go**: Discarded errors (`_ = err`), unclosed resources
 
 ## Features
+
+### Task Lifecycle (v1.4.0)
+
+Sentinel auto-detects your task list (`tasks.md`, `.claude/action-list.md`, etc.) and tracks progress:
+
+- **Session start**: injects pending/in-progress items with enforcement message
+- **Git commit**: auto-marks task IDs (e.g., `CRIT-2`) as `[x]` done
+- **Pre-edit**: injects full task spec when editing with an active task
+- **Numbered lists**: enforces complete implementation of all items
+- **Completion**: warns if uncommitted changes or TODO/FIXME remain
+
+### Context-Aware Analysis (v1.4.0)
+
+`build-context-map.py` analyzes your project using Python AST and TS/JS regex:
+
+```json
+{
+  "files": {
+    "src/base.py": {
+      "functions": {
+        "Base.handle": { "classification": "abstract" },
+        "Base.teardown": { "classification": "intentional_noop" },
+        "stub_fn": { "classification": "stub" }
+      }
+    }
+  }
+}
+```
+
+`deny-dummy.sh` uses this map to **allow** `pass` in abstract methods and cleanup functions while **blocking** it in real stubs.
 
 ### i18n (v1.3.0)
 
@@ -204,15 +245,30 @@ After `/sentinel:init`, configure at `.sentinel/config.json`:
   "skip_patterns": ["**/test_*", "**/node_modules/**"],
   "header_threshold_lines": 200,
   "error_repeat_limit": 3,
+  "surgical_change_max_lines": 15,
   "enforcement": {
     "pre_edit_gate": true,
     "deny_dummy": true,
     "surgical_change": true,
     "scope_guard": true,
     "secret_scan": true,
+    "scope_reduction_guard": true,
+    "task_scope_guard": true,
+    "task_automark": true,
+    "task_completion_gate": true,
+    "subagent_context": true,
     "file_header_check": true,
     "env_safety": true,
-    "error_logger": true
+    "error_logger": true,
+    "post_edit_verify": true,
+    "completion_check": true
+  },
+  "taskList": {
+    "enabled": true,
+    "file": "auto",
+    "idPattern": "[A-Z]+-[0-9]+",
+    "autoMarkOnCommit": true,
+    "maxInjectItems": 30
   }
 }
 ```
@@ -246,7 +302,7 @@ Sentinel requires `.sentinel/current-task.json` before source code edits:
 
 ```json
 {
-  "task_id": "CRIT-2",
+  "item_id": "CRIT-2",
   "why": "API endpoint crashes with TypeError",
   "approach": "Replace dict .get() with dataclass attribute access",
   "impact_files": ["main.py:get_artifact — 2 callers"],
@@ -289,17 +345,20 @@ rm -rf .sentinel/  # Optional: remove project state
 sentinel/
 ├── .claude-plugin/          # Plugin manifest
 ├── hooks/
-│   ├── hooks.json           # 13 hooks across 7 event types
+│   ├── hooks.json           # 19 hooks across 9 event types
 │   └── scripts/
-│       ├── _common.sh       # Cross-platform layer + i18n + stats
+│       ├── _common.sh       # Cross-platform layer + i18n + stats + task utilities
+│       ├── _state-common.sh # Shared state save logic
+│       ├── build-context-map.py   # AST file classifier (Python/TS/JS)
+│       ├── state-extract-intent.py # Transcript intent extractor
 │       ├── deep-analyze.py  # AST analyzer (Python/TS/JS/Go)
-│       └── *.sh             # 13 hook scripts
+│       └── *.sh             # 19 hook scripts
 ├── agents/                  # sentinel-reviewer + sentinel-verifier
 ├── skills/                  # 4 reference guides
 ├── commands/                # 3 slash commands
 ├── config/                  # Default configuration
 ├── templates/               # CLAUDE.md, settings.json, file-header
-├── tests/                   # 26 automated tests
+├── tests/                   # 57 automated tests
 └── .github/workflows/       # CI (ShellCheck + tests + validation)
 ```
 

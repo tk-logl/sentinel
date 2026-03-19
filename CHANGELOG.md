@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-03-18
+
+### Added
+- **Task lifecycle system** — auto-detect task lists, inject pending items on session start/compaction, enforce complete implementation
+  - `task-automark.sh` — auto-marks task IDs as `[x]` on git commit (PostToolUse Bash)
+  - `task-scope-guard.sh` — detects numbered lists, enforces complete implementation (UserPromptSubmit)
+  - `scope-reduction-guard.sh` — blocks scope reduction in code comments: 21 Korean + 16 English + 5 Japanese patterns (PreToolUse, BLOCKING)
+  - `task-completion-gate.sh` — evidence check before task completion: uncommitted changes, TODO/FIXME, verify_command (PostToolUse TaskUpdate)
+  - `subagent-context.sh` — injects quality rules into subagent Task spawns (PreToolUse Task)
+- **Context-aware analysis** — AST-based file classification replaces regex-only dummy detection
+  - `build-context-map.py` — Python AST + TS/JS regex: classifies functions as abstract/intentional_noop/stub/implemented
+  - `deny-dummy.sh` context-map integration — allows `pass` in abstract methods and cleanup functions, blocks true stubs
+- **Memory/compaction full automation** — all 5 sections auto-populated, zero placeholder text
+  - `_state-common.sh` — shared `sentinel_save_state()` for state-preserve and session-save
+  - `state-extract-intent.py` — extracts user intent from transcript JSONL (last 3 messages, 200 chars each)
+  - `post-compact-restore.sh` — saves compact_summary, re-injects task context + pre-compaction state (PostCompact)
+- **Task list utilities in `_common.sh`** — `sentinel_find_task_list`, `sentinel_task_count`, `sentinel_task_list_items`, `sentinel_task_mark`, `sentinel_task_extract_ids`, `sentinel_task_get_spec`
+- **Config utilities** — `sentinel_read_config` (cached), `sentinel_is_source_file`, `sentinel_should_skip`
+- `session-init.sh` task-list injection (pending/in-progress counts + items, enforcement message)
+- `pre-edit-gate.sh` spec injection (outputs full task spec from task list when edit is allowed)
+- `completion-check.sh` task-list integration (warns on [~] items remaining)
+- Config: `taskList` section (auto-detect, idPattern, states, maxInjectItems), `preImplGate` section
+- Config: enforcement toggles for all new hooks + `post_edit_verify` + `completion_check`
+- 31 new tests (57 total, up from 26)
+
+### Changed
+- `state-preserve.sh` rewritten — uses `_state-common.sh`, auto-populates Section 1 (intent from transcript), Section 3 (decisions from current-task.json), Section 5 (next steps from task list)
+- `session-save.sh` rewritten — uses `_state-common.sh`, eliminates ~60 lines of duplication
+- `error-logger.sh` — reads `error_repeat_limit` from config instead of hardcoded 3
+- `surgical-change.sh` — reads `surgical_change_max_lines` from config instead of hardcoded 15
+- `hooks.json` — 6 new hook registrations (PostCompact, TaskUpdate, Task, UserPromptSubmit +1, PreToolUse +2)
+
+### Removed
+- Dead config keys: `linters`, `state_dir`, `notifications` (never connected)
+
 ## [1.3.0] - 2026-03-18
 
 ### Added
@@ -89,7 +124,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Configuration** — `config/sentinel.json` with per-hook enforcement toggles
 - MIT License
 
-[Unreleased]: https://github.com/tk-logl/sentinel/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/tk-logl/sentinel/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/tk-logl/sentinel/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/tk-logl/sentinel/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/tk-logl/sentinel/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/tk-logl/sentinel/compare/v1.0.0...v1.1.0

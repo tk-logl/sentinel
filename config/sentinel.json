@@ -12,12 +12,6 @@
     "**/.claude/**",
     "**/.omc/**"
   ],
-  "linters": {
-    "python": "ruff",
-    "typescript": "eslint",
-    "go": "golangci-lint",
-    "rust": "clippy"
-  },
   "enforcement": {
     "pre_edit_gate": true,
     "deny_dummy": true,
@@ -26,15 +20,35 @@
     "secret_scan": true,
     "file_header_check": true,
     "env_safety": true,
-    "error_logger": true
+    "error_logger": true,
+    "post_edit_verify": true,
+    "completion_check": true,
+    "scope_reduction_guard": true,
+    "task_scope_guard": true,
+    "task_automark": true,
+    "task_completion_gate": true,
+    "subagent_context": true
   },
   "header_threshold_lines": 200,
   "error_repeat_limit": 3,
   "surgical_change_max_lines": 15,
-  "state_dir": ".sentinel/state",
-  "notifications": {
-    "telegram": { "enabled": false },
-    "slack": { "enabled": false },
-    "discord": { "enabled": false }
+  "taskList": {
+    "enabled": true,
+    "file": "auto",
+    "idPattern": "[A-Z]+-[0-9]+",
+    "states": {
+      "pending": "- [ ]",
+      "inProgress": "- [~]",
+      "done": "- [x]"
+    },
+    "autoMarkOnCommit": true,
+    "injectOnSessionStart": true,
+    "injectOnPostCompact": true,
+    "maxInjectItems": 30
+  },
+  "preImplGate": {
+    "taskFile": ".sentinel/current-task.json",
+    "requiredFields": ["item_id", "why", "approach", "impact_files", "blast_radius", "verify_command"],
+    "injectSpecOnAllow": true
   }
 }

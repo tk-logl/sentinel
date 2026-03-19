@@ -65,7 +65,6 @@ For **Python** projects:
   "language": "auto",
   "source_extensions": ["py"],
   "skip_patterns": ["**/test_*", "**/*.test.*", "**/tests/**", "**/__pycache__/**"],
-  "linters": { "python": "ruff" },
   "header_threshold_lines": 200,
   "error_repeat_limit": 3,
   "enforcement": {
@@ -76,7 +75,23 @@ For **Python** projects:
     "secret_scan": true,
     "file_header_check": true,
     "env_safety": true,
-    "error_logger": true
+    "error_logger": true,
+    "post_edit_verify": true,
+    "completion_check": true,
+    "scope_reduction_guard": true,
+    "task_scope_guard": true,
+    "task_automark": true,
+    "task_completion_gate": true,
+    "subagent_context": true
+  },
+  "surgical_change_max_lines": 15,
+  "taskList": {
+    "enabled": true,
+    "file": "auto",
+    "idPattern": "[A-Z]+-[0-9]+",
+    "autoMarkOnCommit": true,
+    "injectOnSessionStart": true,
+    "maxInjectItems": 30
   }
 }
 ```
@@ -87,7 +102,6 @@ For **Node/TypeScript** projects:
   "language": "auto",
   "source_extensions": ["ts", "tsx", "js", "jsx"],
   "skip_patterns": ["**/node_modules/**", "**/*.test.*", "**/*.spec.*", "**/dist/**", "**/.next/**"],
-  "linters": { "typescript": "eslint" },
   "header_threshold_lines": 200,
   "error_repeat_limit": 3,
   "enforcement": {
@@ -98,7 +112,23 @@ For **Node/TypeScript** projects:
     "secret_scan": true,
     "file_header_check": true,
     "env_safety": true,
-    "error_logger": true
+    "error_logger": true,
+    "post_edit_verify": true,
+    "completion_check": true,
+    "scope_reduction_guard": true,
+    "task_scope_guard": true,
+    "task_automark": true,
+    "task_completion_gate": true,
+    "subagent_context": true
+  },
+  "surgical_change_max_lines": 15,
+  "taskList": {
+    "enabled": true,
+    "file": "auto",
+    "idPattern": "[A-Z]+-[0-9]+",
+    "autoMarkOnCommit": true,
+    "injectOnSessionStart": true,
+    "maxInjectItems": 30
   }
 }
 ```
@@ -109,7 +139,6 @@ For **Go** projects:
   "language": "auto",
   "source_extensions": ["go"],
   "skip_patterns": ["**/*_test.go", "**/vendor/**"],
-  "linters": { "go": "golangci-lint" },
   "header_threshold_lines": 200,
   "error_repeat_limit": 3,
   "enforcement": {
@@ -120,7 +149,23 @@ For **Go** projects:
     "secret_scan": true,
     "file_header_check": true,
     "env_safety": true,
-    "error_logger": true
+    "error_logger": true,
+    "post_edit_verify": true,
+    "completion_check": true,
+    "scope_reduction_guard": true,
+    "task_scope_guard": true,
+    "task_automark": true,
+    "task_completion_gate": true,
+    "subagent_context": true
+  },
+  "surgical_change_max_lines": 15,
+  "taskList": {
+    "enabled": true,
+    "file": "auto",
+    "idPattern": "[A-Z]+-[0-9]+",
+    "autoMarkOnCommit": true,
+    "injectOnSessionStart": true,
+    "maxInjectItems": 30
   }
 }
 ```
@@ -173,14 +218,21 @@ Detected:
   Language: [auto/en/ko/ja]
 
 Active enforcement:
-  ✅ pre-edit-gate    — requires .sentinel/current-task.json before edits
-  ✅ deny-dummy       — blocks placeholder/stub code
-  ✅ surgical-change  — enforces minimal diffs
-  ✅ scope-guard      — warns on scope reduction language
-  ✅ secret-scan      — blocks hardcoded secrets
-  ✅ file-header-check — suggests headers for 200+ line files
-  ✅ env-safety       — blocks dangerous system commands
-  ✅ error-logger     — tracks and warns on repeated errors
+  ✅ pre-edit-gate         — requires pre-implementation checklist before edits
+  ✅ deny-dummy            — blocks placeholder/stub/TODO code
+  ✅ surgical-change       — enforces minimal diffs
+  ✅ scope-guard           — warns on scope reduction in prompts
+  ✅ scope-reduction-guard — blocks scope reduction in code comments
+  ✅ secret-scan           — blocks hardcoded secrets
+  ✅ file-header-check     — suggests headers for 200+ line files
+  ✅ env-safety            — blocks dangerous system commands
+  ✅ error-logger          — tracks errors + PostToolUseFailure
+  ✅ post-edit-verify      — warns on bare except, shell=True after edits
+  ✅ completion-check      — verifies all work is done before stopping
+  ✅ task-automark         — auto-marks tasks done on git commit
+  ✅ task-scope-guard      — enforces numbered list completion
+  ✅ task-completion-gate  — requires evidence before task completion
+  ✅ subagent-context      — injects rules into spawned subagents
 
 Next steps:
   1. Review .sentinel/config.json — adjust if needed
@@ -189,3 +241,47 @@ Next steps:
   4. Use /sentinel:check to verify compliance anytime
   5. Use /sentinel:header <file> to add headers to key files
 ```
+
+## Step 8: Sub-Context Advisor (Optional)
+
+Analyze the project's CLAUDE.md for optimization opportunities:
+
+1. **Check CLAUDE.md size**: If it exists and exceeds 200 lines:
+   ```
+   ⚠️ CLAUDE.md is [N] lines (recommended: < 200 lines)
+   
+   Large CLAUDE.md files waste context tokens and may exceed truncation limits.
+   Consider splitting into domain-specific files in .claude/rules/:
+   ```
+
+2. **Propose split**: Analyze content for separable domains:
+   - Look for sections with clear domain boundaries (e.g., "Django", "Frontend", "Security", "Infrastructure")
+   - Suggest `.claude/rules/{domain}.md` files with `paths:` conditions for directory-scoped loading
+   - Example output:
+   ```
+   Suggested split:
+     .claude/rules/django.md     (paths: apps/**)     — 45 lines
+     .claude/rules/voice.md      (paths: voice/**)    — 60 lines  
+     .claude/rules/security.md   (paths: **)          — 30 lines
+     CLAUDE.md                   (core rules)         — 65 lines (down from 200)
+   ```
+
+3. **Ask user**: Present the split proposal via AskUserQuestion. If approved, create the files and trim CLAUDE.md.
+
+## Step 9: AGENTS.md Generation (Optional)
+
+Identify directories that would benefit from AGENTS.md files:
+
+1. **Scan for complex directories**: Find directories with 3+ source files over 200 lines each
+2. **Propose AGENTS.md**: For each qualifying directory:
+   ```
+   📁 voice/backend/pm_engine/ — 8 source files (avg 350 lines)
+   
+   Suggested AGENTS.md:
+     Purpose: PM Engine — LangGraph-based project management workflow
+     Key files: engine.py (main), graph.py (state graph), dispatcher.py (routing)
+     Conventions: All workers inherit BaseWorker, use async patterns
+     Testing: pytest voice/backend/tests/test_pm_*.py
+   ```
+3. **Ask user**: Confirm which directories should get AGENTS.md files
+4. **Generate**: Create the AGENTS.md files with auto-analyzed content

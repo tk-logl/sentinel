@@ -19,22 +19,11 @@ fi
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 [[ -z "$FILE_PATH" ]] && exit 0
 
-# Only gate source code files
-EXT="${FILE_PATH##*.}"
-case "$EXT" in
-  py|ts|tsx|js|jsx|go|rs|java|c|cpp|svelte|vue) ;;
-  *) exit 0 ;;
-esac
+# Only gate source code files (config-driven extensions)
+if ! sentinel_is_source_file "$FILE_PATH"; then exit 0; fi
 
-# Skip non-project files
-case "$FILE_PATH" in
-  */.sentinel/*|*/.claude/*|*/.omc/*|*/.github/*|*/node_modules/*|*/__pycache__/*) exit 0 ;;
-esac
-
-# Skip test files
-if echo "$FILE_PATH" | grep -qP '(\.test\.|\.spec\.|/tests/|/test_|_test\.)'; then
-  exit 0
-fi
+# Skip test files, config dirs, and user-configured skip patterns
+if sentinel_should_skip "$FILE_PATH"; then exit 0; fi
 
 # Find project root
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
@@ -95,4 +84,21 @@ fi
 
 sentinel_stats_increment "checks"
 echo "✅ [Sentinel Pre-Edit Gate] Checklist passed: ${TASK_ID}"
+
+# Inject task spec from task-list if configured
+INJECT_SPEC=$(sentinel_read_config '.preImplGate.injectSpecOnAllow' 'true')
+if [[ "$INJECT_SPEC" == "true" ]]; then
+  # Use item_id or task_id from current-task.json
+  ITEM_ID=$(jq -r '.item_id // .task_id // empty' "$TASK_FILE" 2>/dev/null)
+  if [[ -n "$ITEM_ID" ]]; then
+    SPEC=$(sentinel_task_get_spec "$ITEM_ID" 2>/dev/null)
+    if [[ -n "$SPEC" ]]; then
+      echo ""
+      echo "=== Active Item Spec (${ITEM_ID}) ==="
+      echo "$SPEC"
+      echo "=== Implement exactly as specified ==="
+    fi
+  fi
+fi
+
 exit 0
