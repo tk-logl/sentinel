@@ -18,12 +18,17 @@ fi
 OUTPUT=$(sentinel_save_state "auto" "true")
 
 if [[ -n "$OUTPUT" ]]; then
+  PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
   BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
-  TASK_FILE="$(git rev-parse --show-toplevel 2>/dev/null)/.sentinel/current-task.json"
+  TASK_FILE="${PROJECT_ROOT}/.sentinel/current-task.json"
   TASK_INFO=""
   if [[ -f "$TASK_FILE" && "$SENTINEL_NO_JQ" == "0" ]]; then
     TASK_ID=$(jq -r '.task_id // .item_id // "unknown"' "$TASK_FILE" 2>/dev/null)
     TASK_INFO="Task: ${TASK_ID}"
+  fi
+  # Leave flag for post-compact restore (detected by scope-guard on next UserPromptSubmit)
+  if [[ -n "$PROJECT_ROOT" ]]; then
+    touch "${PROJECT_ROOT}/.sentinel/state/.compact-pending"
   fi
   echo "💾 [Sentinel State-Preserve] Saved to .sentinel/state/latest.md"
   echo "  Branch: ${BRANCH} | ${TASK_INFO:-no active task}"

@@ -10,6 +10,22 @@ sentinel_require_pcre "scope-guard"
 sentinel_compat_check "scope_guard"
 
 INPUT=$(cat)
+
+# Post-compact restore: detect flag left by PreCompact and run restore
+PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+COMPACT_FLAG="${PROJECT_ROOT}/.sentinel/state/.compact-pending"
+if [[ -f "$COMPACT_FLAG" ]]; then
+  rm -f "$COMPACT_FLAG"
+  RESTORE_SCRIPT="${SCRIPT_DIR}/post-compact-restore.sh"
+  if [[ -f "$RESTORE_SCRIPT" ]]; then
+    RESTORE_OUTPUT=$(echo "$INPUT" | bash "$RESTORE_SCRIPT" 2>&1)
+    if [[ -n "$RESTORE_OUTPUT" ]]; then
+      echo "$RESTORE_OUTPUT"
+      echo ""
+    fi
+  fi
+fi
+
 # Check per-item action
 ACTION=$(sentinel_get_action "workflow" "warn_scope_reduction_prompt" "warn")
 [[ "$ACTION" == "off" ]] && exit 0
