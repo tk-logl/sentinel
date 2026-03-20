@@ -156,15 +156,15 @@ def main() -> None:
 
     if violations:
         basename = os.path.basename(file_path)
-        print(f"⛔ [Sentinel AST-Gate] Placeholder code in: {basename}", file=sys.stderr)
-        print(file=sys.stderr)
-        print("Violations:", file=sys.stderr)
+        print(f"[Sentinel AST-Gate] Placeholder code in: {basename}")
+        print()
+        print("Violations:")
         for v in violations:
-            print(v, file=sys.stderr)
-        print(file=sys.stderr)
-        print("Every function must have a real implementation.", file=sys.stderr)
-        print("AST analysis detected empty/stub function bodies — comment tricks will NOT bypass this.", file=sys.stderr)
-        print("→ Write actual logic, then retry.", file=sys.stderr)
+            print(v)
+        print()
+        print("Every function must have a real implementation.")
+        print("AST analysis detected empty/stub function bodies — comment tricks will NOT bypass this.")
+        print("-> Write actual logic, then retry.")
         sys.exit(2)
 
     sys.exit(0)
