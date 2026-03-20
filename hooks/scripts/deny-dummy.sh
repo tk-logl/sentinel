@@ -80,7 +80,7 @@ WARNINGS=""
 # 1. Standalone pass (Python)
 ACTION=$(sentinel_get_action "codeQuality" "block_standalone_pass")
 if [[ "$ACTION" != "off" ]]; then
-  if ! $CTXMAP_PASS_OK && echo "$CONTENT" | grep -qP '^\s+pass\s*$'; then
+  if ! $CTXMAP_PASS_OK && echo "$CONTENT" | grep -qP '^\s+pass\s*(#.*)?$'; then
     if ! echo "$CONTENT" | grep -qP '@abstractmethod|def __del__|def teardown|def tearDown|def cleanup|def close|finally\s*:'; then
       MSG="  - 'pass' as standalone statement (implement the function body)\n"
       [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
@@ -133,7 +133,7 @@ fi
 # 6. Empty function bodies (return None / return undefined / {})
 ACTION=$(sentinel_get_action "codeQuality" "block_empty_functions")
 if [[ "$ACTION" != "off" ]]; then
-  if echo "$CONTENT" | grep -qP '^\s*def\s+\w+\(.*\).*:\s*$' && echo "$CONTENT" | grep -qP '^\s+return\s*$|^\s+return\s+None\s*$'; then
+  if echo "$CONTENT" | grep -qP '^\s*def\s+\w+\(.*\).*:\s*$' && echo "$CONTENT" | grep -qP '^\s+return\s*(#.*)?$|^\s+return\s+None\s*(#.*)?$'; then
     MSG="  - Empty function body (return None) — implement real logic\n"
     [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
   fi
@@ -194,14 +194,16 @@ fi
 
 # --- Output ---
 if [[ -n "$BLOCKS" ]]; then
-  echo "⛔ [Sentinel Deny-Dummy] Placeholder/stub code detected in: $(basename "$FILE_PATH")"
-  echo ""
-  echo -e "Violations:\n${BLOCKS}"
-  if [[ -n "$WARNINGS" ]]; then
-    echo -e "Warnings:\n${WARNINGS}"
-  fi
-  echo "Every function must have a real implementation. No stubs, no deferred work."
-  echo "→ Implement the actual logic, then retry."
+  {
+    echo "⛔ [Sentinel Deny-Dummy] Placeholder/stub code detected in: $(basename "$FILE_PATH")"
+    echo ""
+    echo -e "Violations:\n${BLOCKS}"
+    if [[ -n "$WARNINGS" ]]; then
+      echo -e "Warnings:\n${WARNINGS}"
+    fi
+    echo "Every function must have a real implementation. No stubs, no deferred work."
+    echo "→ Implement the actual logic, then retry."
+  } >&2
   sentinel_stats_increment "blocks"
   sentinel_stats_increment "pattern_dummy_code"
   exit 2

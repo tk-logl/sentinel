@@ -109,10 +109,12 @@ if [[ "$TOOL_NAME" == "Edit" ]]; then
 fi
 
 if [[ -n "$BLOCKS" ]]; then
-  echo "⛔ [Sentinel Surgical-Change] Edit blocked:"
-  echo ""
-  echo -e "$BLOCKS"
-  echo "Surgical Change Rule: smallest diff possible. Add before replace. Grep before delete."
+  {
+    echo "⛔ [Sentinel Surgical-Change] Edit blocked:"
+    echo ""
+    echo -e "$BLOCKS"
+    echo "Surgical Change Rule: smallest diff possible. Add before replace. Grep before delete."
+  } >&2
   sentinel_stats_increment "blocks"
   sentinel_stats_increment "pattern_large_edit"
   exit 2

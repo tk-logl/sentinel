@@ -28,12 +28,21 @@ echo "📋 [Sentinel Subagent-Context] Injecting rules for: ${SUBAGENT_TYPE:-unk
 echo ""
 
 # 1. Core enforcement rules
-echo "=== Sentinel Quality Rules (apply to all subagents) ==="
-echo "  - No pass/TODO/FIXME/PLACEHOLDER in code"
+echo "=== Sentinel Quality Rules (MANDATORY for all subagents) ==="
+echo "  CODE QUALITY:"
+echo "  - No pass/TODO/FIXME/PLACEHOLDER/HACK in code — implement fully"
 echo "  - No raise NotImplementedError without @abstractmethod"
-echo "  - No scope reduction (simplified, for now, basic version)"
-echo "  - No silent error swallowing (except: pass without logging)"
-echo "  - Implement completely or not at all"
+echo "  - No return None / return '' / return {} as function body — write real logic"
+echo "  - No scope reduction — do not simplify, shorten, or remove existing functionality"
+echo "  - No silent error swallowing — every except must have logging"
+echo "  - Guard ALL array/object access: use ?? [], optional chaining (?.), or null checks"
+echo "  - Use python3 (never bare python) for all shell commands"
+echo ""
+echo "  WHEN BLOCKED BY A HOOK:"
+echo "  - Do NOT retry the same command — read the hook error and fix the root cause"
+echo "  - Do NOT add comments/whitespace to bypass pattern detection — AST analysis will still catch it"
+echo "  - Do NOT brute-force the same approach — find an alternative or fix the actual issue"
+echo "  - If a hook blocks your Write/Edit, your code has a real problem — fix it"
 echo ""
 
 # 2. Current task context (if available)

@@ -94,6 +94,11 @@
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/file-header-check.sh\"",
             "timeout": 3
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/ast-quality-gate.py\"",
+            "timeout": 10
           }
         ]
       },

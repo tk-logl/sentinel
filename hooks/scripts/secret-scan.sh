@@ -132,18 +132,20 @@ fi
 
 # --- Output ---
 if [[ -n "$BLOCKS" ]]; then
-  echo "⛔ [Sentinel Secret-Scan] Hardcoded secrets detected in: $(basename "$FILE_PATH")"
-  echo ""
-  echo -e "Found:\n${BLOCKS}"
-  if [[ -n "$WARNINGS" ]]; then
-    echo -e "Warnings:\n${WARNINGS}"
-  fi
-  echo ""
-  echo "Never hardcode credentials. Use:"
-  echo "  Python: os.environ.get('API_KEY') or django-environ"
-  echo "  Node:   process.env.API_KEY or dotenv"
-  echo "  Go:     os.Getenv(\"API_KEY\")"
-  echo "→ Move secrets to environment variables, then retry."
+  {
+    echo "⛔ [Sentinel Secret-Scan] Hardcoded secrets detected in: $(basename "$FILE_PATH")"
+    echo ""
+    echo -e "Found:\n${BLOCKS}"
+    if [[ -n "$WARNINGS" ]]; then
+      echo -e "Warnings:\n${WARNINGS}"
+    fi
+    echo ""
+    echo "Never hardcode credentials. Use:"
+    echo "  Python: os.environ.get('API_KEY') or django-environ"
+    echo "  Node:   process.env.API_KEY or dotenv"
+    echo "  Go:     os.Getenv(\"API_KEY\")"
+    echo "→ Move secrets to environment variables, then retry."
+  } >&2
   sentinel_stats_increment "blocks"
   sentinel_stats_increment "pattern_hardcoded_secret"
   exit 2

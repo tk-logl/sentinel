@@ -36,26 +36,30 @@ ACTION=$(sentinel_get_action "workflow" "require_pre_edit_checklist")
 [[ "$ACTION" == "off" ]] && { sentinel_stats_increment "checks"; exit 0; }
 
 if [[ ! -f "$TASK_FILE" ]]; then
-  echo "⛔ [Sentinel Pre-Edit Gate] .sentinel/current-task.json not found"
-  echo ""
-  echo "Before editing source code, you MUST create a pre-implementation checklist."
-  echo ""
-  echo "Required file: .sentinel/current-task.json"
-  echo '{'
-  echo '  "task_id": "TASK-1",'
-  echo '  "why": "Business/quality reason for this change",'
-  echo '  "approach": "Chosen approach + reasoning (Option A because...)",'
-  echo '  "impact_files": ["file1.py:fn_name — only caller", "file2.ts:Component — imports this"],'
-  echo '  "blast_radius": {"tests_break": [], "tests_add": ["test_new_feature"]},'
-  echo '  "verify_command": "pytest tests/ -x"'
-  echo '}'
-  echo ""
-  echo "This is your blueprint. Fill it with real analysis, not placeholders."
-  echo "→ Write .sentinel/current-task.json first, then edit source code."
+  _msg() {
+    echo "⛔ [Sentinel Pre-Edit Gate] .sentinel/current-task.json not found"
+    echo ""
+    echo "Before editing source code, you MUST create a pre-implementation checklist."
+    echo ""
+    echo "Required file: .sentinel/current-task.json"
+    echo '{'
+    echo '  "task_id": "TASK-1",'
+    echo '  "why": "Business/quality reason for this change",'
+    echo '  "approach": "Chosen approach + reasoning (Option A because...)",'
+    echo '  "impact_files": ["file1.py:fn_name — only caller", "file2.ts:Component — imports this"],'
+    echo '  "blast_radius": {"tests_break": [], "tests_add": ["test_new_feature"]},'
+    echo '  "verify_command": "pytest tests/ -x"'
+    echo '}'
+    echo ""
+    echo "This is your blueprint. Fill it with real analysis, not placeholders."
+    echo "→ Write .sentinel/current-task.json first, then edit source code."
+  }
   if [[ "$ACTION" == "block" ]]; then
+    _msg >&2
     sentinel_stats_increment "blocks"
     exit 2
   else
+    _msg
     sentinel_stats_increment "warnings"
   fi
 fi
@@ -81,15 +85,19 @@ MISSING=""
 [[ -z "$VERIFY" ]] && MISSING="${MISSING}  - verify_command (how to verify this change works)\n"
 
 if [[ -n "$MISSING" ]]; then
-  echo "⛔ [Sentinel Pre-Edit Gate] current-task.json missing required fields"
-  echo "  Current task: ${TASK_ID:-not set}"
-  echo ""
-  echo -e "Missing:\n${MISSING}"
-  echo "→ Update .sentinel/current-task.json with all fields, then retry."
+  _msg2() {
+    echo "⛔ [Sentinel Pre-Edit Gate] current-task.json missing required fields"
+    echo "  Current task: ${TASK_ID:-not set}"
+    echo ""
+    echo -e "Missing:\n${MISSING}"
+    echo "→ Update .sentinel/current-task.json with all fields, then retry."
+  }
   if [[ "$ACTION" == "block" ]]; then
+    _msg2 >&2
     sentinel_stats_increment "blocks"
     exit 2
   else
+    _msg2
     sentinel_stats_increment "warnings"
   fi
 fi
