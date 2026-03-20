@@ -64,6 +64,31 @@ if [[ "$EXT" == "py" ]]; then
       [[ $(echo "$RUFF_OUT" | wc -l) -gt 10 ]] && VIOLATIONS="${VIOLATIONS}    ... and more\n"
     fi
   fi
+
+  # Run mypy on the single file (type checking)
+  # Uses file's own directory to find config; falls back to no-config if plugin errors
+  if command -v mypy &>/dev/null; then
+    FILE_DIR=$(dirname "$FILE_PATH")
+    FILE_BASE=$(basename "$FILE_PATH")
+    # First try with project config (from file's directory)
+    MYPY_RAW=$(cd "$FILE_DIR" && timeout 15 mypy "$FILE_BASE" --no-color-output --no-error-summary --ignore-missing-imports 2>&1)
+    MYPY_EXIT=$?
+    # If plugin error, retry without config
+    if echo "$MYPY_RAW" | grep -q 'Error importing plugin' 2>/dev/null; then
+      MYPY_RAW=$(cd "$FILE_DIR" && timeout 15 mypy "$FILE_BASE" --no-color-output --no-error-summary --ignore-missing-imports --config-file /dev/null 2>&1)
+      MYPY_EXIT=$?
+    fi
+    # Filter to only errors in this specific file (not imports/deps)
+    MYPY_OUT=$(echo "$MYPY_RAW" | grep -P "^${FILE_BASE}:\d+: error:" | head -10)
+    if [[ -n "$MYPY_OUT" ]]; then
+      MYPY_COUNT=$(echo "$MYPY_OUT" | wc -l)
+      VIOLATIONS="${VIOLATIONS}  mypy found ${MYPY_COUNT} type error(s):\n"
+      while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        VIOLATIONS="${VIOLATIONS}    ${line}\n"
+      done <<< "$MYPY_OUT"
+    fi
+  fi
 fi
 
 # --- TypeScript/JavaScript: tsc type check ---
