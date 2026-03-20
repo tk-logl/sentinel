@@ -11,7 +11,80 @@ Exit 2 = DENY (force fix) | Exit 0 = ALLOW
 import ast
 import json
 import os
+import pathlib
 import sys
+
+# --- Canonical noop names (shared across all sentinel AST gates) ---
+# Functions that are LEGITIMATELY empty (lifecycle, teardown, serialization)
+NOOP_NAMES = {
+    # Python dunder methods
+    "__del__", "__repr__", "__str__", "__hash__",
+    "__enter__", "__exit__", "__aenter__", "__aexit__",
+    "__init_subclass__", "__class_getitem__",
+    # Test lifecycle
+    "setUp", "tearDown", "setUpClass", "tearDownClass",
+    "setup", "teardown", "setup_method", "teardown_method",
+    # Common intentional no-ops
+    "cleanup", "close", "dispose", "destroy", "reset",
+    "finalize", "free", "shutdown", "stop",
+    "handleClose", "onClose", "onDestroy",
+    # React lifecycle
+    "componentDidMount", "componentWillUnmount", "componentDidUpdate",
+    "componentDidCatch", "getDerivedStateFromProps", "shouldComponentUpdate",
+    "getSnapshotBeforeUpdate",
+    # Angular lifecycle
+    "ngOnInit", "ngOnDestroy", "ngAfterViewInit", "ngOnChanges",
+    "ngDoCheck", "ngAfterContentInit", "ngAfterContentChecked", "ngAfterViewChecked",
+    # Vue lifecycle
+    "mounted", "unmounted", "created", "beforeDestroy", "beforeUnmount",
+    # Serialization
+    "toString", "valueOf", "toJSON",
+    # Event handlers that may legitimately be empty
+    "configure", "register", "emit", "on",
+}
+
+# Decorators that legitimately excuse empty/stub implementations
+EXEMPT_DECORATORS = {"abstractmethod", "overload", "override"}
+
+
+def _get_sentinel_action(file_path: str) -> str:
+    """Read sentinel config for AST gate action (block/warn/off).
+
+    Walks up from the file to find .sentinel/config.json,
+    reads items.codeQuality.ast_quality_gate. Defaults to 'block'.
+    """
+    try:
+        path = pathlib.Path(file_path).resolve()
+        for parent in path.parents:
+            config = parent / ".sentinel" / "config.json"
+            if config.exists():
+                with open(config) as f:
+                    cfg = json.load(f)
+                return (
+                    cfg.get("items", {})
+                    .get("codeQuality", {})
+                    .get("ast_quality_gate", "block")
+                )
+    except (json.JSONDecodeError, OSError):
+        pass
+    return "block"
+
+
+def _get_decorator_names(node: ast.FunctionDef) -> set[str]:
+    """Extract decorator names from a function node."""
+    names = set()
+    for d in node.decorator_list:
+        if isinstance(d, ast.Name):
+            names.add(d.id)
+        elif isinstance(d, ast.Attribute):
+            names.add(d.attr)
+        elif isinstance(d, ast.Call):
+            func = d.func
+            if isinstance(func, ast.Name):
+                names.add(func.id)
+            elif isinstance(func, ast.Attribute):
+                names.add(func.attr)
+    return names
 
 
 def check_placeholder_functions(file_path: str) -> list[str]:
@@ -38,18 +111,11 @@ def check_placeholder_functions(file_path: str) -> list[str]:
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
 
-        decorators = [
-            getattr(d, "attr", getattr(d, "id", ""))
-            for d in node.decorator_list
-        ]
-        if "abstractmethod" in decorators:
+        # Only skip functions with exempt decorators (abstractmethod, overload, override)
+        if _get_decorator_names(node).intersection(EXEMPT_DECORATORS):
             continue
 
-        noop_names = {
-            "__del__", "teardown", "tearDown", "cleanup", "close",
-            "setUp", "setUpClass", "tearDownClass",
-        }
-        if node.name in noop_names:
+        if node.name in NOOP_NAMES:
             continue
 
         body = node.body
@@ -151,20 +217,16 @@ def check_hollow_implementations(file_path: str) -> list[str]:
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
 
-        # Skip dunder methods, test helpers, lifecycle hooks
-        if node.name.startswith("_"):
+        # Skip dunder methods only (NOT all underscore-prefixed — private stubs are still stubs)
+        if node.name.startswith("__") and node.name.endswith("__"):
             continue
 
-        skip_names = {
-            "setUp", "tearDown", "setUpClass", "tearDownClass",
-            "setup", "teardown", "cleanup", "close", "dispose",
-            "configure", "register", "emit", "on",
-        }
-        if node.name in skip_names:
+        # Use canonical noop list (same as check_placeholder_functions)
+        if node.name in NOOP_NAMES:
             continue
 
-        # Skip decorated functions (property, staticmethod, classmethod, etc.)
-        if node.decorator_list:
+        # Only skip functions with exempt decorators — NOT all decorated functions
+        if _get_decorator_names(node).intersection(EXEMPT_DECORATORS):
             continue
 
         # Collect parameter names (excluding self/cls)
@@ -286,6 +348,11 @@ def main() -> None:
     if any(p in basename.lower() for p in tool_patterns):
         sys.exit(0)
 
+    # Check per-item config (block/warn/off) — consistent with bash hooks
+    action = _get_sentinel_action(file_path)
+    if action == "off":
+        sys.exit(0)
+
     violations = check_placeholder_functions(file_path)
     violations.extend(check_hollow_implementations(file_path))
 
@@ -299,6 +366,8 @@ def main() -> None:
         print("Every function must have a real implementation.", file=sys.stderr)
         print("AST analysis detected empty/stub function bodies — comment tricks will NOT bypass this.", file=sys.stderr)
         print("→ Write actual logic, then retry.", file=sys.stderr)
+        if action == "warn":
+            sys.exit(0)  # warn mode — report but don't block
         sys.exit(2)
 
     sys.exit(0)

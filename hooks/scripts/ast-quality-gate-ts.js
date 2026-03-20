@@ -119,14 +119,51 @@ if (!ts) {
   process.exit(0);
 }
 
-// --- Names that are legitimately empty (lifecycle, teardown, serialization) ---
+// --- Per-item config check (block/warn/off) ---
+function getSentinelAction() {
+  try {
+    const { execSync } = require('child_process');
+    let root = '';
+    try {
+      root = execSync('git rev-parse --show-toplevel', {
+        encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
+      }).trim();
+    } catch { /* not in git repo */ }
+
+    // Walk up from file to find .sentinel/config.json
+    let dir = pathMod.dirname(pathMod.resolve(filePath));
+    const checked = new Set();
+    while (dir && dir !== pathMod.dirname(dir) && !checked.has(dir)) {
+      checked.add(dir);
+      const cfg = pathMod.join(dir, '.sentinel', 'config.json');
+      if (fs.existsSync(cfg)) {
+        const data = JSON.parse(fs.readFileSync(cfg, 'utf-8'));
+        return (data.items || {}).codeQuality?.ast_quality_gate || 'block';
+      }
+      dir = pathMod.dirname(dir);
+    }
+    // Check git root
+    if (root) {
+      const cfg = pathMod.join(root, '.sentinel', 'config.json');
+      if (fs.existsSync(cfg)) {
+        const data = JSON.parse(fs.readFileSync(cfg, 'utf-8'));
+        return (data.items || {}).codeQuality?.ast_quality_gate || 'block';
+      }
+    }
+  } catch { /* config read error — default to block */ }
+  return 'block';
+}
+
+const sentinelAction = getSentinelAction();
+if (sentinelAction === 'off') process.exit(0);
+
+// --- Canonical noop names (unified with ast-quality-gate.py + pre-write-ast.sh) ---
 const NOOP = new Set([
   'constructor',
   // React lifecycle
   'componentDidMount', 'componentWillUnmount', 'componentDidUpdate',
   'componentDidCatch', 'getDerivedStateFromProps', 'shouldComponentUpdate',
-  'getSnapshotBeforeUpdate', 'UNSAFE_componentWillMount',
-  'UNSAFE_componentWillReceiveProps', 'UNSAFE_componentWillUpdate',
+  'getSnapshotBeforeUpdate',
   // Angular lifecycle
   'ngOnInit', 'ngOnDestroy', 'ngAfterViewInit', 'ngOnChanges',
   'ngDoCheck', 'ngAfterContentInit', 'ngAfterContentChecked', 'ngAfterViewChecked',
@@ -134,11 +171,15 @@ const NOOP = new Set([
   'mounted', 'unmounted', 'created', 'beforeDestroy', 'beforeUnmount',
   // Test lifecycle
   'setUp', 'tearDown', 'beforeAll', 'afterAll', 'beforeEach', 'afterEach',
-  // Common no-op patterns
-  'setup', 'teardown', 'cleanup', 'close', 'dispose', 'destroy', 'reset',
-  'finalize', 'free', 'handleClose', 'onClose', 'onDestroy',
+  'setup', 'teardown', 'setup_method', 'teardown_method',
+  // Common intentional no-ops
+  'cleanup', 'close', 'dispose', 'destroy', 'reset',
+  'finalize', 'free', 'shutdown', 'stop',
+  'handleClose', 'onClose', 'onDestroy',
   // Serialization
   'toString', 'valueOf', 'toJSON', 'Symbol.iterator',
+  // Event handlers
+  'configure', 'register', 'emit', 'on',
 ]);
 
 // --- Detection: is this expression an empty/no-op value? ---
@@ -386,6 +427,9 @@ if (violations.length > 0) {
   process.stderr.write('Every function must have a real implementation.\n');
   process.stderr.write('AST analysis detected empty function bodies \u2014 comment tricks will NOT bypass this.\n');
   process.stderr.write('\u2192 Write actual logic, then retry.\n');
+  if (sentinelAction === 'warn') {
+    process.exit(0);  // warn mode — report but don't block
+  }
   process.exit(2);
 }
 

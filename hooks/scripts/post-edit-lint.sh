@@ -49,6 +49,11 @@ VIOLATIONS=""
 # --- Python: ruff check ---
 if [[ "$EXT" == "py" ]]; then
   if command -v ruff &>/dev/null; then
+    # Check formatting first (CLAUDE.md: ruff format BEFORE ruff check)
+    if ! ruff format --check "$FILE_PATH" &>/dev/null; then
+      VIOLATIONS="${VIOLATIONS}  ruff format needed (file has formatting issues):\n"
+      VIOLATIONS="${VIOLATIONS}    Run: ruff format $(basename "$FILE_PATH")\n"
+    fi
     # Run ruff check on the single file (fast, <1s)
     RUFF_OUT=$(ruff check "$FILE_PATH" --no-fix --output-format=concise 2>/dev/null)
     RUFF_EXIT=$?
@@ -71,11 +76,11 @@ if [[ "$EXT" == "py" ]]; then
     FILE_DIR=$(dirname "$FILE_PATH")
     FILE_BASE=$(basename "$FILE_PATH")
     # First try with project config (from file's directory)
-    MYPY_RAW=$(cd "$FILE_DIR" && timeout 15 mypy "$FILE_BASE" --no-color-output --no-error-summary --ignore-missing-imports 2>&1)
+    MYPY_RAW=$(cd "$FILE_DIR" && timeout 15 mypy "$FILE_BASE" --strict --no-color-output --no-error-summary --ignore-missing-imports 2>&1)
     MYPY_EXIT=$?
     # If plugin error, retry without config
     if echo "$MYPY_RAW" | grep -q 'Error importing plugin' 2>/dev/null; then
-      MYPY_RAW=$(cd "$FILE_DIR" && timeout 15 mypy "$FILE_BASE" --no-color-output --no-error-summary --ignore-missing-imports --config-file /dev/null 2>&1)
+      MYPY_RAW=$(cd "$FILE_DIR" && timeout 15 mypy "$FILE_BASE" --strict --no-color-output --no-error-summary --ignore-missing-imports --config-file /dev/null 2>&1)
       MYPY_EXIT=$?
     fi
     # Filter to only errors in this specific file (not imports/deps)
