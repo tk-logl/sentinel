@@ -32,9 +32,10 @@ fi
 
 # Skip enforcement/analysis tools — they legitimately reference the patterns they detect.
 # A quality gate describing "detects empty functions" is not scope reduction.
+# Use separator-bounded patterns to avoid false positives (e.g., "delegate.py" matching *gate*).
 BASENAME=$(basename "$FILE_PATH")
 case "$BASENAME" in
-  *gate*|*guard*|*scan*|*check*|*verify*|*lint*|*analyz*|*detect*|*enforc*) exit 0 ;;
+  *[-_.]gate*|gate[-_.]*|*[-_.]guard*|guard[-_.]*|*[-_.]scan*|scan[-_.]*|*[-_.]check*|check[-_.]*|*[-_.]verify*|verify[-_.]*|*[-_.]lint*|lint[-_.]*|*[-_.]analyz*|analyz*|*[-_.]detect*|detect[-_.]*|*[-_.]enforc*|enforc*) exit 0 ;;
 esac
 case "$FILE_PATH" in
   */sentinel/hooks/*|*/sentinel/scripts/*|*/.claude/plugins/*|*/.claude/hooks/*) exit 0 ;;

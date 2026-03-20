@@ -1,6 +1,6 @@
 {
   "name": "@sentinel/claude-code-plugin",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "private": true,
   "description": "Code quality enforcement plugin for Claude Code — self-contained with vendored dependencies",
   "repository": {

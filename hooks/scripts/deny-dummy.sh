@@ -131,9 +131,12 @@ if [[ "$ACTION" != "off" ]]; then
 fi
 
 # 6. Empty function bodies (return None / return undefined / {})
+# NOTE: Regex check is imprecise in multi-function files (M1 false positive fix).
+# AST gates (ast-quality-gate.py, pre-write-ast.sh) handle this properly.
+# Only flag when def and return None are on adjacent lines (2-line function body).
 ACTION=$(sentinel_get_action "codeQuality" "block_empty_functions")
 if [[ "$ACTION" != "off" ]]; then
-  if echo "$CONTENT" | grep -qP '^\s*def\s+\w+\(.*\).*:\s*$' && echo "$CONTENT" | grep -qP '^\s+return\s*(#.*)?$|^\s+return\s+None\s*(#.*)?$'; then
+  if echo "$CONTENT" | grep -qP '^\s*def\s+\w+\(.*\).*:\s*\n\s+return\s*(None)?\s*(#.*)?$'; then
     MSG="  - Empty function body (return None) — implement real logic\n"
     [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
   fi

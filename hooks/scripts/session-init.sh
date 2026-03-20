@@ -50,7 +50,7 @@ if [[ -n "$PROJECT_ROOT" ]]; then
   CONTEXT_MAP_PY="${SCRIPT_DIR}/build-context-map.py"
   if command -v python3 &>/dev/null && [[ -f "$CONTEXT_MAP_PY" ]]; then
     touch "${PROJECT_ROOT}/.sentinel/context-map.building" 2>/dev/null
-    (python3 "$CONTEXT_MAP_PY" --root "$PROJECT_ROOT" --max-files 500 --timeout 10 2>/dev/null; rm -f "${PROJECT_ROOT}/.sentinel/context-map.building" 2>/dev/null) &
+    (trap 'rm -f "${PROJECT_ROOT}/.sentinel/context-map.building" 2>/dev/null' EXIT; python3 "$CONTEXT_MAP_PY" --root "$PROJECT_ROOT" --max-files 500 --timeout 10 2>/dev/null) &
     CTXMAP_PID=$!
     # Non-blocking — don't wait. Map will be ready for deny-dummy checks.
     # Disown so session-init doesn't wait for it
@@ -160,7 +160,7 @@ fi
 # 8. Version check (non-blocking, cached once per day)
 # Auto-read version from package.json (no hardcoding — single source of truth)
 SENTINEL_VERSION=$(jq -r '.version // "0.0.0"' "${SCRIPT_DIR}/../../package.json" 2>/dev/null || echo "0.0.0")
-VERSION_CACHE="/tmp/.sentinel-version-check"
+VERSION_CACHE="${TMPDIR:-/tmp}/.sentinel-version-check"
 VERSION_CHECK_INTERVAL=86400  # 24 hours
 
 should_check_version() {
@@ -173,22 +173,19 @@ should_check_version() {
 }
 
 if should_check_version && command -v curl &>/dev/null; then
-  # Fetch latest version from GitHub API (timeout 3s, non-blocking)
-  LATEST_JSON=$(curl -s --max-time 3 "https://api.github.com/repos/tk-logl/sentinel/releases/latest" 2>/dev/null || true)
-  if [[ -n "$LATEST_JSON" ]]; then
-    LATEST_VERSION=$(echo "$LATEST_JSON" | jq -r '.tag_name // empty' 2>/dev/null | sed 's/^v//')
-    echo "$LATEST_VERSION" > "$VERSION_CACHE" 2>/dev/null || true
-    if [[ -n "$LATEST_VERSION" && "$LATEST_VERSION" != "$SENTINEL_VERSION" ]]; then
-      echo "=== Sentinel Update Available ==="
-      echo "  Current: v${SENTINEL_VERSION} → Latest: v${LATEST_VERSION}"
-      echo "  Update: claude plugin install github:tk-logl/sentinel"
-      echo ""
+  # Fetch latest version from GitHub API in background (non-blocking)
+  (
+    LATEST_JSON=$(curl -s --max-time 3 "https://api.github.com/repos/tk-logl/sentinel/releases/latest" 2>/dev/null || true)
+    if [[ -n "$LATEST_JSON" ]]; then
+      VER=$(echo "$LATEST_JSON" | jq -r '.tag_name // empty' 2>/dev/null | sed 's/^v//')
+      [[ -n "$VER" ]] && echo "$VER" > "$VERSION_CACHE" 2>/dev/null
+    else
+      touch "$VERSION_CACHE" 2>/dev/null || true
     fi
-  else
-    # Cache empty result to avoid repeated failed checks
-    touch "$VERSION_CACHE" 2>/dev/null || true
-  fi
-elif [[ -f "$VERSION_CACHE" ]]; then
+  ) &
+  disown $! 2>/dev/null || true
+fi
+if [[ -f "$VERSION_CACHE" ]]; then
   CACHED_VERSION=$(cat "$VERSION_CACHE" 2>/dev/null)
   if [[ -n "$CACHED_VERSION" && "$CACHED_VERSION" != "$SENTINEL_VERSION" ]]; then
     echo "=== Sentinel Update Available ==="
