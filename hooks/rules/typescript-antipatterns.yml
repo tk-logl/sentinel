@@ -1,0 +1,118 @@
+# Sentinel ast-grep rules: TypeScript/JavaScript anti-patterns
+# These detect structural code issues that regex cannot reliably catch.
+# Used by ast-grep-gate.sh PostToolUse hook.
+
+# --- Placeholder / Stub Code (Pattern #1, #4) ---
+
+id: stub-return-empty-string
+language: typescript
+severity: error
+message: "Function returns only empty string — implement real logic"
+note: "[Pattern #4] Stub code. A function returning just '' is a placeholder."
+rule:
+  pattern: 'return ""'
+  inside:
+    kind: statement_block
+    inside:
+      any:
+        - kind: function_declaration
+        - kind: method_definition
+        - kind: arrow_function
+
+---
+
+id: stub-return-empty-object
+language: typescript
+severity: error
+message: "Function returns only empty object — implement real logic"
+note: "[Pattern #4] Stub code. A function returning just {} is a placeholder."
+rule:
+  pattern: "return {}"
+  inside:
+    kind: statement_block
+    inside:
+      any:
+        - kind: function_declaration
+        - kind: method_definition
+        - kind: arrow_function
+
+---
+
+id: stub-return-empty-array
+language: typescript
+severity: error
+message: "Function returns only empty array — implement real logic"
+note: "[Pattern #4] Stub code. A function returning just [] is a placeholder."
+rule:
+  pattern: "return []"
+  inside:
+    kind: statement_block
+    inside:
+      any:
+        - kind: function_declaration
+        - kind: method_definition
+        - kind: arrow_function
+
+---
+
+id: todo-throw-not-implemented
+language: typescript
+severity: error
+message: "throw new Error('Not implemented') — implement real logic"
+note: "[Pattern #4] Stub throw. Implement the actual functionality."
+rule:
+  pattern: "throw new Error('Not implemented')"
+
+---
+
+id: todo-throw-todo
+language: typescript
+severity: error
+message: "throw new Error('TODO') — implement real logic"
+note: "[Pattern #1] TODO in throw statement. Implement the actual functionality."
+rule:
+  pattern: "throw new Error('TODO')"
+
+---
+
+# --- Error Swallowing (Pattern #3) ---
+
+id: empty-catch-block
+language: typescript
+severity: error
+message: "Empty catch block swallows errors silently"
+note: "[Pattern #3] Silent error swallowing. Log or re-throw the error."
+rule:
+  kind: catch_clause
+  has:
+    kind: statement_block
+    not:
+      has:
+        any:
+          - kind: expression_statement
+          - kind: return_statement
+          - kind: throw_statement
+          - kind: variable_declaration
+
+---
+
+# --- Unsafe Patterns ---
+
+id: ts-ignore-comment
+language: typescript
+severity: warning
+message: "@ts-ignore suppresses type errors — fix the type instead"
+note: "Suppressing TypeScript errors hides real bugs. Fix the underlying type issue."
+rule:
+  kind: comment
+  regex: "@ts-ignore"
+
+---
+
+id: non-null-assertion
+language: typescript
+severity: warning
+message: "Non-null assertion (!) — use proper null checking"
+note: "Non-null assertions bypass null safety. Use optional chaining or guards."
+rule:
+  kind: non_null_expression
