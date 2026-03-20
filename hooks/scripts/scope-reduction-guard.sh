@@ -81,13 +81,15 @@ fi
 
 if [[ -n "$VIOLATIONS" ]]; then
   if [[ "$ACTION" == "block" ]]; then
-    echo "⛔ [Sentinel Scope-Reduction-Guard] Scope reduction in code comments detected"
-    echo "  File: $(basename "$FILE_PATH")"
-    echo ""
-    echo -e "Violations:\n${VIOLATIONS}"
-    echo "Code comments must NOT contain scope-reduction language."
-    echo "Either implement completely or do not write the code at all."
-    echo "→ Remove scope-reduction comments and implement fully, then retry."
+    {
+      echo "⛔ [Sentinel Scope-Reduction-Guard] Scope reduction in code comments detected"
+      echo "  File: $(basename "$FILE_PATH")"
+      echo ""
+      echo -e "Violations:\n${VIOLATIONS}"
+      echo "Code comments must NOT contain scope-reduction language."
+      echo "Either implement completely or do not write the code at all."
+      echo "→ Remove scope-reduction comments and implement fully, then retry."
+    } >&2
     sentinel_stats_increment "blocks"
     sentinel_stats_increment "pattern_scope_reduction"
     exit 2

@@ -194,14 +194,16 @@ fi
 
 # --- Output ---
 if [[ -n "$BLOCKS" ]]; then
-  echo "⛔ [Sentinel Deny-Dummy] Placeholder/stub code detected in: $(basename "$FILE_PATH")"
-  echo ""
-  echo -e "Violations:\n${BLOCKS}"
-  if [[ -n "$WARNINGS" ]]; then
-    echo -e "Warnings:\n${WARNINGS}"
-  fi
-  echo "Every function must have a real implementation. No stubs, no deferred work."
-  echo "→ Implement the actual logic, then retry."
+  {
+    echo "⛔ [Sentinel Deny-Dummy] Placeholder/stub code detected in: $(basename "$FILE_PATH")"
+    echo ""
+    echo -e "Violations:\n${BLOCKS}"
+    if [[ -n "$WARNINGS" ]]; then
+      echo -e "Warnings:\n${WARNINGS}"
+    fi
+    echo "Every function must have a real implementation. No stubs, no deferred work."
+    echo "→ Implement the actual logic, then retry."
+  } >&2
   sentinel_stats_increment "blocks"
   sentinel_stats_increment "pattern_dummy_code"
   exit 2

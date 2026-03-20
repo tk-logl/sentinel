@@ -42,11 +42,13 @@ sentinel_require_pcre() {
     local hook_name="${1:-hook}"
     local severity="${2:-warning}"  # "blocking" or "warning"
     if [[ "$severity" == "blocking" ]]; then
-      echo "⛔ [Sentinel] GNU grep (PCRE) not available — ${hook_name} CANNOT RUN."
-      echo "  This is a BLOCKING hook. Install PCRE grep to enable protection."
-      echo "  Linux: sudo apt install grep"
-      echo "  macOS: brew install grep"
-      echo "  Windows: use WSL or Git Bash"
+      {
+        echo "⛔ [Sentinel] GNU grep (PCRE) not available — ${hook_name} CANNOT RUN."
+        echo "  This is a BLOCKING hook. Install PCRE grep to enable protection."
+        echo "  Linux: sudo apt install grep"
+        echo "  macOS: brew install grep"
+        echo "  Windows: use WSL or Git Bash"
+      } >&2
       exit 2
     else
       echo "⚠️ [Sentinel] GNU grep (PCRE) not available — ${hook_name} disabled."
@@ -61,17 +63,39 @@ sentinel_require_jq() {
     local hook_name="${1:-hook}"
     local severity="${2:-warning}"  # "blocking" or "warning"
     if [[ "$severity" == "blocking" ]]; then
-      echo "⛔ [Sentinel] jq not found — ${hook_name} CANNOT RUN."
-      echo "  This is a BLOCKING hook. Install jq to enable protection."
-      echo "  Linux: sudo apt install jq"
-      echo "  macOS: brew install jq"
-      echo "  Windows: choco install jq (or scoop install jq)"
+      {
+        echo "⛔ [Sentinel] jq not found — ${hook_name} CANNOT RUN."
+        echo "  This is a BLOCKING hook. Install jq to enable protection."
+        echo "  Linux: sudo apt install jq"
+        echo "  macOS: brew install jq"
+        echo "  Windows: choco install jq (or scoop install jq)"
+      } >&2
       exit 2
     else
       echo "⚠️ [Sentinel] jq not found — ${hook_name} disabled."
       echo "  Linux: sudo apt install jq | macOS: brew install jq"
       exit 0
     fi
+  fi
+}
+
+# ─── Denial Output Helper ───
+# Routes violation messages to stderr (for Claude Code denial visibility) or stdout.
+# When action=block: outputs to stderr so Claude Code displays the denial reason,
+#   increments "blocks" counter, and exits 2 (DENY).
+# When action=warn: outputs to stdout as informational context,
+#   increments "warnings" counter, and returns (continues execution).
+# Usage: sentinel_report "$ACTION" "⛔ Title" "  Detail line 1" "  Detail line 2"
+sentinel_report() {
+  local action="$1"
+  shift
+  if [[ "$action" == "block" ]]; then
+    printf '%s\n' "$@" >&2
+    sentinel_stats_increment "blocks"
+    exit 2
+  else
+    printf '%s\n' "$@"
+    sentinel_stats_increment "warnings"
   fi
 }
 

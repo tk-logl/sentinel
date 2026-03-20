@@ -35,10 +35,9 @@ ACTION=$(sentinel_get_action "safetyNet" "block_brew_on_linux")
 if [[ "$ACTION" != "off" ]]; then
   if echo "$COMMAND" | grep -qP '\bbrew\s+(install|uninstall|upgrade|tap)'; then
     if [[ "$(uname)" == "Linux" ]]; then
-      echo "⛔ [Sentinel Env-Safety] 'brew' is not available on Linux"
-      echo "  Use apt, pip, npm, or the appropriate package manager."
-      sentinel_stats_increment "blocks"
-      [[ "$ACTION" == "block" ]] && exit 2
+      sentinel_report "$ACTION" \
+        "⛔ [Sentinel Env-Safety] 'brew' is not available on Linux" \
+        "  Use apt, pip, npm, or the appropriate package manager."
     fi
   fi
 fi
@@ -48,10 +47,9 @@ ACTION=$(sentinel_get_action "safetyNet" "block_bare_python")
 if [[ "$ACTION" != "off" ]]; then
   if echo "$COMMAND" | grep -qP '(?<!\w)python(?!3)\s' ; then
     if ! echo "$COMMAND" | grep -qP 'python3|/usr/bin/env python|which python|python --version'; then
-      echo "⛔ [Sentinel Env-Safety] Use 'python3' instead of 'python'"
-      echo "  On modern systems, 'python' may not exist or point to Python 2."
-      sentinel_stats_increment "blocks"
-      [[ "$ACTION" == "block" ]] && exit 2
+      sentinel_report "$ACTION" \
+        "⛔ [Sentinel Env-Safety] Use 'python3' instead of 'python'" \
+        "  On modern systems, 'python' may not exist or point to Python 2."
     fi
   fi
 fi
@@ -60,12 +58,11 @@ fi
 ACTION=$(sentinel_get_action "safetyNet" "block_dangerous_rm")
 if [[ "$ACTION" != "off" ]]; then
   if echo "$COMMAND" | grep -qP 'rm\s+(-rf|-fr|--recursive)\s+(/\s*$|/\s+|~/|\./?\.\.|\./\s|/home|/etc|/var|/usr)'; then
-    echo "⛔ [Sentinel Env-Safety] Dangerous rm command blocked"
-    echo "  Target: $(sentinel_sanitize "$(echo "$COMMAND" | grep -oP 'rm\s+\S+\s+\S+')")"
-    echo "  Never delete root, home, or system directories."
-    echo "  If you need to clean up, specify exact paths."
-    sentinel_stats_increment "blocks"
-    [[ "$ACTION" == "block" ]] && exit 2
+    sentinel_report "$ACTION" \
+      "⛔ [Sentinel Env-Safety] Dangerous rm command blocked" \
+      "  Target: $(sentinel_sanitize "$(echo "$COMMAND" | grep -oP 'rm\s+\S+\s+\S+')")" \
+      "  Never delete root, home, or system directories." \
+      "  If you need to clean up, specify exact paths."
   fi
 fi
 
@@ -88,11 +85,10 @@ fi
 ACTION=$(sentinel_get_action "safetyNet" "block_no_verify")
 if [[ "$ACTION" != "off" ]]; then
   if echo "$COMMAND" | grep -qP 'git\s+(commit|push|merge)\s+.*--no-verify'; then
-    echo "⛔ [Sentinel Env-Safety] --no-verify detected — bypassing safety hooks"
-    echo "  Pre-commit hooks exist for a reason. Fix the underlying issue instead."
-    echo "  If a hook is broken, fix the hook — don't skip it."
-    sentinel_stats_increment "blocks"
-    [[ "$ACTION" == "block" ]] && exit 2
+    sentinel_report "$ACTION" \
+      "⛔ [Sentinel Env-Safety] --no-verify detected — bypassing safety hooks" \
+      "  Pre-commit hooks exist for a reason. Fix the underlying issue instead." \
+      "  If a hook is broken, fix the hook — don't skip it."
   fi
 fi
 
@@ -100,11 +96,10 @@ fi
 ACTION=$(sentinel_get_action "safetyNet" "warn_sudo" "warn")
 if [[ "$ACTION" != "off" ]]; then
   if echo "$COMMAND" | grep -qP '^\s*sudo\s'; then
-    echo "⚠️ [Sentinel Env-Safety] sudo detected"
-    echo "  Avoid running commands as root unless absolutely necessary."
-    echo "  Check if the operation works without sudo first."
-    sentinel_stats_increment "warnings"
-    [[ "$ACTION" == "block" ]] && exit 2
+    sentinel_report "$ACTION" \
+      "⚠️ [Sentinel Env-Safety] sudo detected" \
+      "  Avoid running commands as root unless absolutely necessary." \
+      "  Check if the operation works without sudo first."
   fi
 fi
 
@@ -112,12 +107,11 @@ fi
 ACTION=$(sentinel_get_action "safetyNet" "block_force_push" "warn")
 if [[ "$ACTION" != "off" ]]; then
   if echo "$COMMAND" | grep -qP 'git\s+push\s+.*--force(?!-with-lease)'; then
-    echo "⛔ [Sentinel Env-Safety] git push --force detected"
-    echo "  Force pushing rewrites remote history and can destroy others' work."
-    echo "  Consider: git push --force-with-lease (safer alternative)"
-    echo "  If you must force push, explain why in the commit message."
-    sentinel_stats_increment "blocks"
-    [[ "$ACTION" == "block" ]] && exit 2
+    sentinel_report "$ACTION" \
+      "⛔ [Sentinel Env-Safety] git push --force detected" \
+      "  Force pushing rewrites remote history and can destroy others' work." \
+      "  Consider: git push --force-with-lease (safer alternative)" \
+      "  If you must force push, explain why in the commit message."
   fi
 fi
 
@@ -125,11 +119,10 @@ fi
 ACTION=$(sentinel_get_action "safetyNet" "block_git_reset_hard" "warn")
 if [[ "$ACTION" != "off" ]]; then
   if echo "$COMMAND" | grep -qP 'git\s+reset\s+--hard'; then
-    echo "⛔ [Sentinel Env-Safety] git reset --hard detected"
-    echo "  This permanently discards uncommitted changes."
-    echo "  Consider: git stash (preserves changes for later)"
-    sentinel_stats_increment "blocks"
-    [[ "$ACTION" == "block" ]] && exit 2
+    sentinel_report "$ACTION" \
+      "⛔ [Sentinel Env-Safety] git reset --hard detected" \
+      "  This permanently discards uncommitted changes." \
+      "  Consider: git stash (preserves changes for later)"
   fi
 fi
 
@@ -139,11 +132,10 @@ if [[ "$ACTION" != "off" ]]; then
   PROTECTED=$(_get_protected_branches)
   if echo "$COMMAND" | grep -qP "git\s+push\s+\S+\s+(${PROTECTED})\b|git\s+push\s+origin\s+(${PROTECTED})\b"; then
     BRANCH_MATCH=$(echo "$COMMAND" | grep -oP "git\s+push\s+\S+\s+\K(${PROTECTED})" | head -1)
-    echo "⛔ [Sentinel Env-Safety] Push to protected branch '${BRANCH_MATCH}' blocked"
-    echo "  Protected branches: $(echo "$PROTECTED" | tr '|' ', ')"
-    echo "  Use a feature branch and create a pull request instead."
-    sentinel_stats_increment "blocks"
-    [[ "$ACTION" == "block" ]] && exit 2
+    sentinel_report "$ACTION" \
+      "⛔ [Sentinel Env-Safety] Push to protected branch '${BRANCH_MATCH}' blocked" \
+      "  Protected branches: $(echo "$PROTECTED" | tr '|' ', ')" \
+      "  Use a feature branch and create a pull request instead."
   fi
 fi
 
@@ -151,11 +143,10 @@ fi
 ACTION=$(sentinel_get_action "safetyNet" "block_git_clean")
 if [[ "$ACTION" != "off" ]]; then
   if echo "$COMMAND" | grep -qP 'git\s+clean\s+.*-[a-zA-Z]*f'; then
-    echo "⛔ [Sentinel Env-Safety] git clean -f detected"
-    echo "  This permanently deletes untracked files."
-    echo "  Use 'git clean -n' (dry-run) first to see what would be removed."
-    sentinel_stats_increment "blocks"
-    [[ "$ACTION" == "block" ]] && exit 2
+    sentinel_report "$ACTION" \
+      "⛔ [Sentinel Env-Safety] git clean -f detected" \
+      "  This permanently deletes untracked files." \
+      "  Use 'git clean -n' (dry-run) first to see what would be removed."
   fi
 fi
 
@@ -163,11 +154,10 @@ fi
 ACTION=$(sentinel_get_action "safetyNet" "block_git_checkout_discard")
 if [[ "$ACTION" != "off" ]]; then
   if echo "$COMMAND" | grep -qP 'git\s+checkout\s+--\s+\.|git\s+restore\s+--staged\s+\.|git\s+restore\s+\.'; then
-    echo "⛔ [Sentinel Env-Safety] Bulk discard of changes detected"
-    echo "  'git checkout -- .' or 'git restore .' discards ALL uncommitted changes."
-    echo "  Specify individual files instead, or use 'git stash' to preserve changes."
-    sentinel_stats_increment "blocks"
-    [[ "$ACTION" == "block" ]] && exit 2
+    sentinel_report "$ACTION" \
+      "⛔ [Sentinel Env-Safety] Bulk discard of changes detected" \
+      "  'git checkout -- .' or 'git restore .' discards ALL uncommitted changes." \
+      "  Specify individual files instead, or use 'git stash' to preserve changes."
   fi
 fi
 
@@ -176,12 +166,11 @@ ACTION=$(sentinel_get_action "safetyNet" "block_destructive_sql")
 if [[ "$ACTION" != "off" ]]; then
   if echo "$COMMAND" | grep -qiP 'DROP\s+(TABLE|DATABASE|SCHEMA|INDEX)\s|TRUNCATE\s+TABLE\s|DELETE\s+FROM\s+\w+\s*;?\s*$|ALTER\s+TABLE\s+\w+\s+DROP\s'; then
     MATCH=$(echo "$COMMAND" | grep -oiP 'DROP\s+(TABLE|DATABASE|SCHEMA|INDEX)\s+\w+|TRUNCATE\s+TABLE\s+\w+|DELETE\s+FROM\s+\w+' | head -1)
-    echo "⛔ [Sentinel Env-Safety] Destructive SQL detected: $(sentinel_sanitize "$MATCH")"
-    echo "  DROP TABLE/DATABASE/TRUNCATE permanently destroys data."
-    echo "  Use Django migrations for schema changes."
-    echo "  For data cleanup, use management commands with --dry-run first."
-    sentinel_stats_increment "blocks"
-    [[ "$ACTION" == "block" ]] && exit 2
+    sentinel_report "$ACTION" \
+      "⛔ [Sentinel Env-Safety] Destructive SQL detected: $(sentinel_sanitize "$MATCH")" \
+      "  DROP TABLE/DATABASE/TRUNCATE permanently destroys data." \
+      "  Use Django migrations for schema changes." \
+      "  For data cleanup, use management commands with --dry-run first."
   fi
 fi
 
@@ -191,11 +180,10 @@ if [[ "$ACTION" != "off" ]]; then
   PROTECTED=$(_get_protected_branches)
   if echo "$COMMAND" | grep -qP "git\s+branch\s+(-[dD]|--delete)\s+(${PROTECTED})\b|git\s+push\s+\S+\s+:(${PROTECTED})\b"; then
     BRANCH_MATCH=$(echo "$COMMAND" | grep -oP "(${PROTECTED})" | head -1)
-    echo "⛔ [Sentinel Env-Safety] Deletion of protected branch '${BRANCH_MATCH}' blocked"
-    echo "  Protected branches: $(echo "$PROTECTED" | tr '|' ', ')"
-    echo "  These branches should never be deleted."
-    sentinel_stats_increment "blocks"
-    [[ "$ACTION" == "block" ]] && exit 2
+    sentinel_report "$ACTION" \
+      "⛔ [Sentinel Env-Safety] Deletion of protected branch '${BRANCH_MATCH}' blocked" \
+      "  Protected branches: $(echo "$PROTECTED" | tr '|' ', ')" \
+      "  These branches should never be deleted."
   fi
 fi
 
