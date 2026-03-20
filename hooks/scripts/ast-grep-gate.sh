@@ -45,7 +45,13 @@ ACTION=$(sentinel_get_action "codeQuality" "ast_grep_gate" "block")
 
 # Check if ast-grep is available
 if ! command -v ast-grep &>/dev/null; then
-  # Graceful degradation — ast-grep not installed, skip silently
+  # Warn once per session that ast-grep is not installed
+  AST_GREP_WARNED="${TMPDIR:-/tmp}/.sentinel-ast-grep-warned"
+  if [[ ! -f "$AST_GREP_WARNED" ]]; then
+    echo "⚠️ [Sentinel] ast-grep CLI not installed — structural anti-pattern rules disabled"
+    echo "  Install: pip install ast-grep-cli"
+    touch "$AST_GREP_WARNED"
+  fi
   exit 0
 fi
 

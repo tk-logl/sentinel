@@ -57,7 +57,7 @@ CONTENT=$(echo "$INPUT" | jq -r '.tool_input.content // empty' 2>/dev/null)
 EXT="${FILE_PATH##*.}"
 
 # Create temp file with correct extension for AST parsing
-TMPFILE=$(mktemp "/tmp/sentinel-pre-ast-XXXXXX.${EXT}")
+TMPFILE=$(mktemp "${TMPDIR:-/tmp}/sentinel-pre-ast-XXXXXX.${EXT}")
 trap 'rm -f "$TMPFILE"' EXIT
 echo "$CONTENT" > "$TMPFILE"
 
@@ -66,41 +66,58 @@ VIOLATIONS=""
 # --- Python AST analysis ---
 if [[ "$EXT" == "py" ]]; then
   # Use inline Python AST analysis (stdlib — no dependencies)
-  VIOLATIONS=$(python3 -c "
+  # Pass temp file path as argv[1] to avoid shell injection via path characters
+  VIOLATIONS=$(python3 - "$TMPFILE" <<'PYEOF'
 import ast, sys
 
-source = open('$TMPFILE', 'r').read()
+tmpfile = sys.argv[1]
+source = open(tmpfile, 'r').read()
 try:
     tree = ast.parse(source)
 except SyntaxError:
-    sys.exit(0)  # Can't parse = let it through, linter will catch syntax errors
+    sys.exit(0)
 
-NOOP = {'constructor','setUp','tearDown','setup','teardown','cleanup',
-        'close','dispose','destroy','reset','finalize','free',
-        'componentDidMount','componentWillUnmount','ngOnInit','ngOnDestroy',
-        'mounted','unmounted','created','beforeDestroy','toString','__del__',
-        'beforeAll','afterAll','beforeEach','afterEach'}
+# Canonical noop names (unified with ast-quality-gate.py + ast-quality-gate-ts.js)
+NOOP = {
+    '__del__','__repr__','__str__','__hash__',
+    '__enter__','__exit__','__aenter__','__aexit__',
+    '__init_subclass__','__class_getitem__',
+    'setUp','tearDown','setUpClass','tearDownClass',
+    'setup','teardown','setup_method','teardown_method',
+    'cleanup','close','dispose','destroy','reset',
+    'finalize','free','shutdown','stop',
+    'handleClose','onClose','onDestroy',
+    'componentDidMount','componentWillUnmount','componentDidUpdate',
+    'componentDidCatch','getDerivedStateFromProps','shouldComponentUpdate',
+    'getSnapshotBeforeUpdate',
+    'ngOnInit','ngOnDestroy','ngAfterViewInit','ngOnChanges',
+    'ngDoCheck','ngAfterContentInit','ngAfterContentChecked','ngAfterViewChecked',
+    'mounted','unmounted','created','beforeDestroy','beforeUnmount',
+    'toString','valueOf','toJSON',
+    'configure','register','emit','on',
+}
+
+# Only these decorators excuse empty implementations
+EXEMPT_DECORATORS = {'abstractmethod', 'overload', 'override'}
 
 violations = []
 for node in ast.walk(tree):
     if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
         continue
     name = node.name
-    if name in NOOP or name.startswith('_'):
+    if name in NOOP:
         continue
-    # Check decorators for @abstractmethod, @override, @property
-    skip = False
+    # Skip dunder methods only (NOT all underscore-prefixed)
+    if name.startswith('__') and name.endswith('__'):
+        continue
+    # Only skip functions with exempt decorators
+    dec_names = set()
     for dec in node.decorator_list:
-        dec_name = ''
         if isinstance(dec, ast.Name):
-            dec_name = dec.id
+            dec_names.add(dec.id)
         elif isinstance(dec, ast.Attribute):
-            dec_name = dec.attr
-        if dec_name in ('abstractmethod', 'override', 'property', 'setter', 'getter',
-                        'staticmethod', 'classmethod', 'overload'):
-            skip = True
-            break
-    if skip:
+            dec_names.add(dec.attr)
+    if dec_names.intersection(EXEMPT_DECORATORS):
         continue
 
     body = node.body
@@ -147,7 +164,8 @@ for node in ast.walk(tree):
 if violations:
     for v in violations:
         print(v)
-" 2>/dev/null)
+PYEOF
+  )
 fi
 
 # --- TypeScript/JavaScript AST analysis ---

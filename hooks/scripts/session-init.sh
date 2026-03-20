@@ -158,7 +158,8 @@ if [[ -n "$COMPAT_ISSUES" ]]; then
 fi
 
 # 8. Version check (non-blocking, cached once per day)
-SENTINEL_VERSION="1.4.0"
+# Auto-read version from package.json (no hardcoding — single source of truth)
+SENTINEL_VERSION=$(jq -r '.version // "0.0.0"' "${SCRIPT_DIR}/../../package.json" 2>/dev/null || echo "0.0.0")
 VERSION_CACHE="/tmp/.sentinel-version-check"
 VERSION_CHECK_INTERVAL=86400  # 24 hours
 

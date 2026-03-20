@@ -1,7 +1,7 @@
 #!/bin/bash
-# Sentinel Stop Hook: Completion Verification (WARNING — AGGRESSIVE)
+# Sentinel Stop Hook: Completion Verification (BLOCKING — AGGRESSIVE)
 # Performs thorough incomplete-work detection when AI stops generating.
-# Exit 0 = ALLOW (Stop hooks cannot block, but warnings are loud)
+# Exit 2 = FORCE CONTINUE (CRITICAL issues found) | Exit 0 = ALLOW stop
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/_common.sh"
@@ -255,4 +255,10 @@ fi
 
 # Session quality report (shows when 3+ checks happened)
 sentinel_stats_report
+
+# Exit 2 = force AI to continue working when CRITICAL issues exist
+if [[ -n "$CRITICAL" ]]; then
+  sentinel_stats_increment "blocks"
+  exit 2
+fi
 exit 0
