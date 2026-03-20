@@ -130,6 +130,134 @@ def check_placeholder_functions(file_path: str) -> list[str]:
     return violations
 
 
+def check_hollow_implementations(file_path: str) -> list[str]:
+    """Detect functions that appear implemented but do no meaningful work.
+
+    Catches sophisticated no-ops that pass the basic checks:
+    - Functions that ignore ALL parameters and return a hardcoded constant
+    - Identity functions that return a single parameter unchanged
+    - Functions whose body is only logging calls (print/logger) with no real logic
+    """
+    try:
+        with open(file_path, encoding="utf-8") as f:
+            source = f.read()
+        tree = ast.parse(source, filename=file_path)
+    except (SyntaxError, UnicodeDecodeError, OSError):
+        return []
+
+    violations = []
+
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+
+        # Skip dunder methods, test helpers, lifecycle hooks
+        if node.name.startswith("_"):
+            continue
+
+        skip_names = {
+            "setUp", "tearDown", "setUpClass", "tearDownClass",
+            "setup", "teardown", "cleanup", "close", "dispose",
+            "configure", "register", "emit", "on",
+        }
+        if node.name in skip_names:
+            continue
+
+        # Skip decorated functions (property, staticmethod, classmethod, etc.)
+        if node.decorator_list:
+            continue
+
+        # Collect parameter names (excluding self/cls)
+        param_names = set()
+        for arg in node.args.args:
+            if arg.arg not in ("self", "cls"):
+                param_names.add(arg.arg)
+        for arg in node.args.posonlyargs:
+            if arg.arg not in ("self", "cls"):
+                param_names.add(arg.arg)
+        for arg in node.args.kwonlyargs:
+            param_names.add(arg.arg)
+        if node.args.vararg:
+            param_names.add(node.args.vararg.arg)
+        if node.args.kwarg:
+            param_names.add(node.args.kwarg.arg)
+
+        # Need at least one parameter to check (zero-param functions are fine)
+        if not param_names:
+            continue
+
+        # Strip docstring from body
+        body = list(node.body)
+        if (
+            body
+            and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)
+        ):
+            body = body[1:]
+
+        if not body:
+            continue  # Already caught by check_placeholder_functions
+
+        # --- Pattern 1: Ignores ALL params, returns a hardcoded constant ---
+        # A function that takes params but never references them and just returns a literal
+        if len(body) == 1 and isinstance(body[0], ast.Return) and body[0].value is not None:
+            ret_val = body[0].value
+            # Check if the return value is a constant (not involving any parameter)
+            names_in_return = {n.id for n in ast.walk(ret_val) if isinstance(n, ast.Name)}
+            if not names_in_return.intersection(param_names) and len(param_names) >= 2:
+                # Returns something that uses NONE of the 2+ parameters
+                if isinstance(ret_val, ast.Constant):
+                    violations.append(
+                        f"  Line {node.lineno}: {node.name}() ignores all {len(param_names)} "
+                        f"parameters, returns hardcoded {ret_val.value!r}"
+                    )
+                    continue
+                if isinstance(ret_val, (ast.Dict, ast.List, ast.Tuple)):
+                    child_names = {n.id for n in ast.walk(ret_val) if isinstance(n, ast.Name)}
+                    if not child_names.intersection(param_names):
+                        violations.append(
+                            f"  Line {node.lineno}: {node.name}() ignores all {len(param_names)} "
+                            f"parameters, returns a hardcoded literal"
+                        )
+                        continue
+
+        # --- Pattern 2: Identity function — returns a single parameter unchanged ---
+        if len(body) == 1 and isinstance(body[0], ast.Return) and body[0].value is not None:
+            ret_val = body[0].value
+            if isinstance(ret_val, ast.Name) and ret_val.id in param_names and len(param_names) >= 2:
+                # Returns one param, ignores the rest — likely a no-op
+                other_params = param_names - {ret_val.id}
+                violations.append(
+                    f"  Line {node.lineno}: {node.name}() returns '{ret_val.id}' unchanged, "
+                    f"ignoring {len(other_params)} other parameter(s): {', '.join(sorted(other_params))}"
+                )
+                continue
+
+        # --- Pattern 3: Body is only logging calls (no real logic) ---
+        log_funcs = {"print", "log", "debug", "info", "warning", "error", "critical"}
+        real_stmts = []
+        for stmt in body:
+            if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
+                func = stmt.value.func
+                fname = ""
+                if isinstance(func, ast.Name):
+                    fname = func.id
+                elif isinstance(func, ast.Attribute):
+                    fname = func.attr
+                if fname in log_funcs:
+                    continue
+            real_stmts.append(stmt)
+
+        if len(real_stmts) == 0 and len(body) >= 1:
+            violations.append(
+                f"  Line {node.lineno}: {node.name}() body contains only "
+                f"logging/print calls (no real logic)"
+            )
+
+    return violations
+
+
 def main() -> None:
     try:
         data = json.load(sys.stdin)
@@ -152,11 +280,17 @@ def main() -> None:
     if any(p in file_path for p in skip_patterns):
         sys.exit(0)
 
+    # Skip enforcement tools themselves
+    basename = os.path.basename(file_path)
+    tool_patterns = ["gate", "guard", "scan", "check", "verify", "lint", "analyz", "detect", "enforc"]
+    if any(p in basename.lower() for p in tool_patterns):
+        sys.exit(0)
+
     violations = check_placeholder_functions(file_path)
+    violations.extend(check_hollow_implementations(file_path))
 
     if violations:
-        basename = os.path.basename(file_path)
-        print(f"⛔ [Sentinel AST-Gate] Placeholder code in: {basename}", file=sys.stderr)
+        print(f"⛔ [Sentinel AST-Gate] Incomplete code in: {basename}", file=sys.stderr)
         print(file=sys.stderr)
         print("Violations:", file=sys.stderr)
         for v in violations:

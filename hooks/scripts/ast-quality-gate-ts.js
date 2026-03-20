@@ -52,6 +52,12 @@ const SKIP = [
 ];
 if (SKIP.some(p => filePath.includes(p))) process.exit(0);
 
+// Skip enforcement/analysis tools — they legitimately reference detection patterns
+const baseName = pathMod.basename(filePath).toLowerCase();
+const TOOL_PATTERNS = ['gate', 'guard', 'scan', 'check', 'verify', 'lint', 'analyz', 'detect', 'enforc'];
+if (TOOL_PATTERNS.some(p => baseName.includes(p))) process.exit(0);
+if (['/sentinel/', '/.claude/plugins/', '/.claude/hooks/'].some(p => filePath.includes(p))) process.exit(0);
+
 // --- Find TypeScript compiler ---
 function findTS() {
   const tryReq = (p) => { try { return require(p); } catch { return null; } };
@@ -275,11 +281,67 @@ function analyzeFile(targetPath) {
         else if (isUnimplementedThrow(s)) {
           violations.push(`  Line ${line}: ${name}() has only 'throw new Error(...)' (unimplemented)`);
         }
-        // console.log only
+        // console.log only (single statement)
         else if (isConsoleOnly(s)) {
           const access = s.expression.expression;
           const method = ts.isPropertyAccessExpression(access) ? access.name.text : 'log';
           violations.push(`  Line ${line}: ${name}() has only console.${method}() (no-op)`);
+        }
+      }
+
+      // --- Hollow implementation checks (sophisticated no-ops) ---
+      // Extract parameter names (exclude 'this' parameter in TS)
+      const params = (node.parameters || [])
+        .filter(p => !(ts.isIdentifier(p.name) && p.name.text === 'this'))
+        .map(p => ts.isIdentifier(p.name) ? p.name.text : null)
+        .filter(Boolean);
+
+      if (params.length >= 2 && real.length >= 1) {
+        // Collect all identifier names used in the body
+        const usedNames = new Set();
+        function collectNames(n) {
+          if (ts.isIdentifier(n)) usedNames.add(n.text);
+          ts.forEachChild(n, collectNames);
+        }
+        for (const s of real) collectNames(s);
+
+        // Pattern: ignores ALL params, returns a hardcoded constant
+        if (real.length === 1 && ts.isReturnStatement(real[0]) && real[0].expression) {
+          const retExpr = real[0].expression;
+          const paramSet = new Set(params);
+          const usedInReturn = new Set();
+          function collectRetNames(n) {
+            if (ts.isIdentifier(n)) usedInReturn.add(n.text);
+            ts.forEachChild(n, collectRetNames);
+          }
+          collectRetNames(retExpr);
+
+          const usesAnyParam = [...usedInReturn].some(n => paramSet.has(n));
+          if (!usesAnyParam) {
+            const isLiteral = ts.isStringLiteral(retExpr) || ts.isNumericLiteral(retExpr) ||
+              retExpr.kind === ts.SyntaxKind.TrueKeyword || retExpr.kind === ts.SyntaxKind.FalseKeyword ||
+              retExpr.kind === ts.SyntaxKind.NullKeyword ||
+              (ts.isObjectLiteralExpression(retExpr) && retExpr.properties.length === 0) ||
+              (ts.isArrayLiteralExpression(retExpr) && retExpr.elements.length === 0);
+            if (isLiteral) {
+              violations.push(`  Line ${line}: ${name}() ignores all ${params.length} parameters, returns a hardcoded literal`);
+            }
+          }
+
+          // Pattern: identity function — returns one param, ignores the rest
+          if (ts.isIdentifier(retExpr) && paramSet.has(retExpr.text) && params.length >= 2) {
+            const returned = retExpr.text;
+            const ignored = params.filter(p => p !== returned);
+            violations.push(`  Line ${line}: ${name}() returns '${returned}' unchanged, ignoring ${ignored.length} other parameter(s): ${ignored.join(', ')}`);
+          }
+        }
+
+        // Pattern: body is only console/logging calls (multi-statement)
+        if (real.length >= 1) {
+          const allConsole = real.every(s => isConsoleOnly(s));
+          if (allConsole) {
+            violations.push(`  Line ${line}: ${name}() body contains only console calls (no real logic)`);
+          }
         }
       }
     }
