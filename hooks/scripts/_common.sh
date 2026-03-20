@@ -79,6 +79,19 @@ sentinel_require_jq() {
   fi
 }
 
+# ─── Safe Grep Count ───
+# CRITICAL: Never use `grep -c PATTERN FILE || echo 0` in a subshell/capture!
+# grep -c outputs "0" to stdout AND exits 1 when no matches found.
+# In `$(grep -c ... || echo 0)`, BOTH "0" from grep AND "0" from echo are captured → "0\n0".
+# This causes `[[ "0\n0" -gt 0 ]]` → bash syntax error.
+# Instead, capture grep's output in a variable, then default to 0 if empty.
+# Usage: count=$(sentinel_safe_count '^\s*pattern' "$file")
+sentinel_safe_count() {
+  local result
+  result=$(grep -cP "$@" 2>/dev/null) || true
+  echo "${result:-0}"
+}
+
 # ─── Denial Output Helper ───
 # Routes violation messages to stderr (for Claude Code denial visibility) or stdout.
 # When action=block: outputs to stderr so Claude Code displays the denial reason,
@@ -649,6 +662,7 @@ sentinel_find_task_list() {
 }
 
 # Count task items by state.
+# Uses sentinel_safe_count() to avoid the grep -c double-output bug.
 # Usage: pending=$(sentinel_task_count "pending")
 sentinel_task_count() {
   local state="${1:-pending}"
@@ -656,9 +670,9 @@ sentinel_task_count() {
   tf=$(sentinel_find_task_list) || { echo 0; return 0; }
 
   case "$state" in
-    pending)    grep -cP '^\s*- \[ \]' "$tf" 2>/dev/null || echo 0 ;;
-    inProgress) grep -cP '^\s*- \[~\]' "$tf" 2>/dev/null || echo 0 ;;
-    done)       grep -cP '^\s*- \[x\]' "$tf" 2>/dev/null || echo 0 ;;
+    pending)    sentinel_safe_count '^\s*- \[ \]' "$tf" ;;
+    inProgress) sentinel_safe_count '^\s*- \[~\]' "$tf" ;;
+    done)       sentinel_safe_count '^\s*- \[x\]' "$tf" ;;
     *) echo 0 ;;
   esac
 }
