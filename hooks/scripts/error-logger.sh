@@ -75,7 +75,7 @@ LOG_FILE="${LOG_DIR}/error-log.jsonl"
 
 # Create log entry (using jq for safe JSON construction — no injection via quotes/backslashes)
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-ERROR_HASH=$(echo "${COMMAND}${ERROR_TYPE}" | md5sum | cut -c1-8)
+ERROR_HASH=$(echo "${COMMAND}||${ERROR_TYPE}" | md5sum | cut -c1-8)
 
 # Write to log — jq --arg safely escapes all special characters
 jq -n --arg ts "$TIMESTAMP" \

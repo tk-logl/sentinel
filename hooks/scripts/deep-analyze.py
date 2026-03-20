@@ -209,8 +209,9 @@ def analyze_typescript_regex(source: str) -> list[str]:
                 violations.append(f"L{i}: Magic number {num} — extract to named constant [Pattern #37]")
         if re.search(r'"/usr/|"/opt/|"C:\\\\', stripped):
             violations.append(f"L{i}: Hardcoded system path [Pattern #46]")
-        # Loose equality
-        if re.search(r"[^!=]==(?!=)", stripped) and not re.search(r"null\s*==\s*|==\s*null", stripped):
+        # Loose equality — strip string literals first to avoid false positives
+        cleaned = re.sub(r'"[^"]*"|\'[^\']*\'|`[^`]*`', '""', stripped)
+        if re.search(r"[^!=]==(?!=)", cleaned) and not re.search(r"null\s*==\s*|==\s*null", cleaned):
             violations.append(f"L{i}: == instead of === — use strict equality [Pattern #41]")
         # var usage
         if re.match(r"^\s*var\s+\w+", stripped):
