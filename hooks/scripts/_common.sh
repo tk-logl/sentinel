@@ -3,6 +3,12 @@
 # Source this at the top of every hook script.
 # Provides: PCRE grep compatibility, jq check, platform detection.
 
+# --- Stderr guarantee ---
+# Claude Code shows "No stderr output" error when hooks produce empty stderr.
+# Identify the calling script and emit a minimal stderr line immediately.
+_SENTINEL_HOOK_NAME="$(basename "${BASH_SOURCE[1]:-${0}}" .sh 2>/dev/null)"
+echo "Sentinel: ${_SENTINEL_HOOK_NAME}" >&2
+
 # --- Platform detection ---
 SENTINEL_OS="$(uname -s)"
 export SENTINEL_OS
