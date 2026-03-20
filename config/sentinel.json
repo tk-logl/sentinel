@@ -40,7 +40,8 @@
     "task_scope_guard": true,
     "task_automark": true,
     "task_completion_gate": true,
-    "subagent_context": true
+    "subagent_context": true,
+    "ast_quality_gate": true
   },
   "header_threshold_lines": 200,
   "error_repeat_limit": 3,
