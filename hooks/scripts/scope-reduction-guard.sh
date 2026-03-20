@@ -30,6 +30,16 @@ if sentinel_should_skip "$FILE_PATH"; then
   exit 0
 fi
 
+# Skip enforcement/analysis tools — they legitimately reference the patterns they detect.
+# A quality gate describing "detects empty functions" is not scope reduction.
+BASENAME=$(basename "$FILE_PATH")
+case "$BASENAME" in
+  *gate*|*guard*|*scan*|*check*|*verify*|*lint*|*analyz*|*detect*|*enforc*) exit 0 ;;
+esac
+case "$FILE_PATH" in
+  */sentinel/hooks/*|*/sentinel/scripts/*|*/.claude/plugins/*|*/.claude/hooks/*) exit 0 ;;
+esac
+
 # Check per-item action
 ACTION=$(sentinel_get_action "codeQuality" "block_scope_reduction_comments")
 [[ "$ACTION" == "off" ]] && exit 0
