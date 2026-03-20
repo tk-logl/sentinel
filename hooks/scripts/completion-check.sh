@@ -23,6 +23,7 @@ if [[ -f "$_COOLDOWN_FILE" ]]; then
   _LAST=$(cat "$_COOLDOWN_FILE" 2>/dev/null || echo "0")
   _ELAPSED=$(( _NOW - _LAST ))
   if [[ $_ELAPSED -lt 60 ]]; then
+    echo "Sentinel: completion check skipped (cooldown ${_ELAPSED}s/60s)" >&2
     exit 0
   fi
 fi
@@ -261,10 +262,7 @@ fi
 
 # Always output (even when no issues found) — prevent silent completion
 if [[ -z "$CRITICAL" && -z "$WARNINGS" ]]; then
-  echo "✅ [Sentinel Completion Check] No issues detected."
-  echo "  Reminder: 'no issues detected' means no AUTOMATED issues."
-  echo "  You must still verify: does the implementation actually WORK?"
-  echo "  Evidence required: test output, command result, or user confirmation."
+  echo "✅ [Sentinel Completion Check] No issues detected." >&2
 fi
 
 # Session quality report (shows when 3+ checks happened)
