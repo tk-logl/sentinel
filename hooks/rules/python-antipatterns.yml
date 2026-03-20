@@ -1,0 +1,124 @@
+# Sentinel ast-grep rules: Python anti-patterns
+# These detect structural code issues that regex cannot reliably catch.
+# Used by ast-grep-gate.sh PostToolUse hook.
+
+# --- Placeholder / Stub Code (Pattern #1, #4) ---
+
+id: placeholder-pass-only
+language: python
+severity: error
+message: "Function body is only 'pass' — implement real logic"
+note: "[Pattern #4] Stub code. Every function must have a real implementation."
+rule:
+  kind: pass_statement
+  inside:
+    kind: block
+    inside:
+      kind: function_definition
+    not:
+      has:
+        kind: expression_statement
+        follows:
+          kind: pass_statement
+
+---
+
+id: placeholder-return-none
+language: python
+severity: error
+message: "Function body is only 'return None' — implement real logic"
+note: "[Pattern #4] Stub code returning None without any computation."
+rule:
+  pattern: "return None"
+  inside:
+    kind: block
+    inside:
+      kind: function_definition
+    not:
+      has:
+        kind: expression_statement
+        follows:
+          kind: return_statement
+
+---
+
+id: placeholder-not-implemented
+language: python
+severity: error
+message: "raise NotImplementedError without @abstractmethod — implement real logic"
+note: "[Pattern #4] Only acceptable in abstract base classes with @abstractmethod."
+rule:
+  pattern: "raise NotImplementedError"
+  inside:
+    kind: function_definition
+    not:
+      has:
+        kind: decorator
+        has:
+          kind: identifier
+          regex: "abstractmethod"
+
+---
+
+# --- Error Swallowing (Pattern #3) ---
+
+id: bare-except-pass
+language: python
+severity: error
+message: "Bare 'except: pass' swallows all errors silently"
+note: "[Pattern #3] Silent error swallowing. Log or re-raise the exception."
+rule:
+  kind: pass_statement
+  inside:
+    kind: except_clause
+    not:
+      has:
+        kind: "as_pattern"
+
+---
+
+id: except-return-none
+language: python
+severity: warning
+message: "except clause returns None — error is silently swallowed"
+note: "[Pattern #3] Catch-and-return-None hides failures. Log before returning."
+rule:
+  pattern: "return None"
+  inside:
+    kind: except_clause
+    stopBy: end
+
+---
+
+id: except-return-empty
+language: python
+severity: warning
+message: "except clause returns empty value — error may be silently swallowed"
+note: "[Pattern #3] Returning empty string/list/dict hides the error."
+rule:
+  any:
+    - pattern: 'return ""'
+    - pattern: "return []"
+    - pattern: "return {}"
+  inside:
+    kind: except_clause
+    stopBy: end
+
+---
+
+# --- Hardcoded Secrets (Pattern #47) ---
+
+id: hardcoded-api-key
+language: python
+severity: error
+message: "Possible hardcoded API key or secret in source code"
+note: "Use environment variables or secrets management instead."
+rule:
+  kind: assignment
+  all:
+    - has:
+        kind: identifier
+        regex: "(?i)(api_key|secret|password|token|credential)"
+    - has:
+        kind: string
+        regex: ".{8,}"
