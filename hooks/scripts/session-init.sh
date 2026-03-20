@@ -185,12 +185,32 @@ if should_check_version && command -v curl &>/dev/null; then
   ) &
   disown $! 2>/dev/null || true
 fi
+_semver_newer() {
+  # Returns 0 if $1 > $2 (semver comparison)
+  local IFS='.'; local -a a=($1) b=($2)
+  for i in 0 1 2; do
+    local av=${a[$i]:-0} bv=${b[$i]:-0}
+    (( av > bv )) && return 0
+    (( av < bv )) && return 1
+  done
+  return 1
+}
+
 if [[ -f "$VERSION_CACHE" ]]; then
   CACHED_VERSION=$(cat "$VERSION_CACHE" 2>/dev/null)
-  if [[ -n "$CACHED_VERSION" && "$CACHED_VERSION" != "$SENTINEL_VERSION" ]]; then
-    echo "=== Sentinel Update Available ==="
+  if [[ -n "$CACHED_VERSION" ]] && _semver_newer "$CACHED_VERSION" "$SENTINEL_VERSION"; then
+    echo "=== Sentinel Auto-Update ==="
     echo "  Current: v${SENTINEL_VERSION} → Latest: v${CACHED_VERSION}"
-    echo "  Update: claude plugin install github:tk-logl/sentinel"
+    if command -v claude &>/dev/null; then
+      (
+        claude plugin install github:tk-logl/sentinel >/dev/null 2>&1
+        echo "  Updated to v${CACHED_VERSION}" >> "${PROJECT_ROOT}/.sentinel/update.log" 2>/dev/null
+      ) &
+      disown $! 2>/dev/null || true
+      echo "  Auto-updating in background..."
+    else
+      echo "  Update: claude plugin install github:tk-logl/sentinel"
+    fi
     echo ""
   fi
 fi
