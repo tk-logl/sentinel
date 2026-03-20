@@ -175,6 +175,50 @@ if [[ -n "$TASK_LIST_FILE" ]]; then
   fi
 fi
 
+# 10. Test evidence — did tests actually run this session?
+# Check for recent pytest/jest/tsc output in session logs
+if [[ -n "$CHANGED_FILES" ]]; then
+  HAS_PY_CHANGES=false
+  HAS_TS_CHANGES=false
+  while IFS= read -r file; do
+    [[ "$file" == *.py ]] && HAS_PY_CHANGES=true
+    [[ "$file" == *.ts || "$file" == *.tsx ]] && HAS_TS_CHANGES=true
+  done <<< "$CHANGED_FILES"
+
+  # Check if pytest was run recently (last 10 minutes)
+  if [[ "$HAS_PY_CHANGES" == "true" ]]; then
+    PYTEST_EVIDENCE=""
+    # Look for .pytest_cache or coverage files updated recently
+    if [[ -d "$PROJECT_ROOT/.pytest_cache" ]]; then
+      CACHE_AGE=$(find "$PROJECT_ROOT/.pytest_cache" -name "*.json" -mmin -10 2>/dev/null | head -1)
+      [[ -n "$CACHE_AGE" ]] && PYTEST_EVIDENCE="cache"
+    fi
+    if [[ -f "$PROJECT_ROOT/htmlcov/.last_run" ]]; then
+      COV_AGE=$(find "$PROJECT_ROOT/htmlcov" -name ".last_run" -mmin -10 2>/dev/null | head -1)
+      [[ -n "$COV_AGE" ]] && PYTEST_EVIDENCE="coverage"
+    fi
+    if [[ -z "$PYTEST_EVIDENCE" ]]; then
+      CRITICAL="${CRITICAL}🔴 Python files changed but NO pytest evidence found in last 10 min\n"
+      CRITICAL="${CRITICAL}   Run: pytest --cov=apps --cov-fail-under=100 --tb=short\n\n"
+    fi
+  fi
+
+  # Check if tsc was run recently
+  if [[ "$HAS_TS_CHANGES" == "true" ]]; then
+    TSC_EVIDENCE=""
+    # Look for tsbuildinfo updated recently
+    TSC_BUILD=$(find "$PROJECT_ROOT" -name "*.tsbuildinfo" -mmin -15 2>/dev/null | head -1)
+    [[ -n "$TSC_BUILD" ]] && TSC_EVIDENCE="buildinfo"
+    # Or vite build output
+    VITE_BUILD=$(find "$PROJECT_ROOT" -path "*/dist/*" -name "*.js" -mmin -15 2>/dev/null | head -1)
+    [[ -n "$VITE_BUILD" ]] && TSC_EVIDENCE="vite"
+    if [[ -z "$TSC_EVIDENCE" ]]; then
+      WARNINGS="${WARNINGS}⚠️  TypeScript files changed but no tsc/build evidence found\n"
+      WARNINGS="${WARNINGS}   Run: npx tsc --noEmit\n\n"
+    fi
+  fi
+fi
+
 # Output (after ALL checks including task-list)
 if [[ -n "$CRITICAL" || -n "$WARNINGS" ]]; then
   echo "🛑 [Sentinel Completion Check] — STOP. Review before claiming done."
