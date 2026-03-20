@@ -16,6 +16,18 @@ ACTION=$(sentinel_get_action "workflow" "completion_check" "warn")
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 [[ -z "$PROJECT_ROOT" ]] && exit 0
 
+# Cooldown: skip if last run was within 60 seconds to prevent infinite loop
+_COOLDOWN_FILE="${PROJECT_ROOT}/.sentinel/.completion-check-last"
+_NOW=$(date +%s)
+if [[ -f "$_COOLDOWN_FILE" ]]; then
+  _LAST=$(cat "$_COOLDOWN_FILE" 2>/dev/null || echo "0")
+  _ELAPSED=$(( _NOW - _LAST ))
+  if [[ $_ELAPSED -lt 60 ]]; then
+    exit 0
+  fi
+fi
+echo "$_NOW" > "$_COOLDOWN_FILE" 2>/dev/null
+
 # Build source extension pattern from config (consistent with sentinel_is_source_file)
 _SRC_EXTS=$(sentinel_read_config \
   'if .source_extensions then (.source_extensions | join("|")) else empty end' \
