@@ -59,10 +59,19 @@ if (TOOL_PATTERNS.some(p => baseName.includes(p))) process.exit(0);
 if (['/sentinel/', '/.claude/plugins/', '/.claude/hooks/'].some(p => filePath.includes(p))) process.exit(0);
 
 // --- Find TypeScript compiler ---
+// Resolution order: plugin vendor (self-contained) → project local → dynamic search → global
+// The plugin bundles its own TypeScript in vendor/ so it works on ANY project,
+// even those without TypeScript installed. Zero external dependencies.
 function findTS() {
   const tryReq = (p) => { try { return require(p); } catch { return null; } };
 
-  // 1. Walk up from the file being edited
+  // 1. Plugin's own vendored TypeScript (self-contained — always available)
+  //    __dirname = hooks/scripts/, plugin root = ../../
+  const pluginRoot = pathMod.resolve(__dirname, '..', '..');
+  const vendored = tryReq(pathMod.join(pluginRoot, 'vendor', 'typescript'));
+  if (vendored) return vendored;
+
+  // 2. Walk up from the file being edited (use project's TS if available for version compat)
   let dir = pathMod.dirname(pathMod.resolve(filePath));
   const seen = new Set();
   while (dir && dir !== pathMod.dirname(dir) && !seen.has(dir)) {
@@ -72,25 +81,34 @@ function findTS() {
     dir = pathMod.dirname(dir);
   }
 
-  // 2. cwd from hook input
+  // 3. cwd from hook input
   if (input.cwd) {
     const r = tryReq(pathMod.join(input.cwd, 'node_modules', 'typescript'));
     if (r) return r;
   }
 
-  // 3. git root + common monorepo subdirs
+  // 4. git root — dynamic search for any node_modules/typescript
   try {
     const { execSync } = require('child_process');
     const root = execSync('git rev-parse --show-toplevel', {
       encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
     }).trim();
-    for (const sub of ['', 'frontend', 'client', 'web', 'app', 'packages']) {
-      const r = tryReq(pathMod.join(root, sub, 'node_modules', 'typescript'));
-      if (r) return r;
-    }
+    const rootTs = tryReq(pathMod.join(root, 'node_modules', 'typescript'));
+    if (rootTs) return rootTs;
+    try {
+      const found = execSync(
+        `find "${root}" -maxdepth 8 -path "*/node_modules/typescript/lib/typescript.js" -not -path "*/node_modules/*/node_modules/*" 2>/dev/null | head -1`,
+        { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 3000 }
+      ).trim();
+      if (found) {
+        const tsDir = pathMod.dirname(pathMod.dirname(found));
+        const r = tryReq(tsDir);
+        if (r) return r;
+      }
+    } catch { /* find timeout or error — skip */ }
   } catch { /* no git root */ }
 
-  // 4. Global typescript
+  // 5. Global typescript
   return tryReq('typescript');
 }
 
