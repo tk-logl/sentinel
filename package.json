@@ -1,0 +1,17 @@
+{
+  "name": "@sentinel/claude-code-plugin",
+  "version": "1.5.1",
+  "private": true,
+  "description": "Code quality enforcement plugin for Claude Code — self-contained with vendored dependencies",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tk-logl/sentinel.git"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "vendorDependencies": {
+    "typescript": "5.9.3"
+  }
+}

@@ -4,6 +4,10 @@
 .sentinel/current-task.json
 .sentinel/agent-results/
 
+# Node (vendor/ is committed intentionally for self-contained operation)
+node_modules/
+package-lock.json
+
 # OS
 .DS_Store
 Thumbs.db
@@ -13,3 +17,7 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Python
+__pycache__/
+*.pyc
