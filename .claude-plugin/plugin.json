@@ -1,6 +1,6 @@
 {
   "name": "sentinel",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "description": "Universal AI code quality enforcement — prevents 47 common AI mistakes, enforces surgical edits, blocks dummy code, manages context memory, task lifecycle tracking, context-aware analysis",
   "author": {
     "name": "TopKloud",

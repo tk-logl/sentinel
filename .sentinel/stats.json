@@ -1,0 +1,9 @@
+{
+  "session_start": "2026-03-20T11:47:14Z",
+  "blocks": 5,
+  "patterns": {
+    "scope_reduction": 3,
+    "hardcoded_secret": 1,
+    "dummy_code": 1
+  }
+}
