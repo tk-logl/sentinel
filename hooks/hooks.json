@@ -99,6 +99,11 @@
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/ast-quality-gate.py\"",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/ast-quality-gate-ts.js\"",
+            "timeout": 10
           }
         ]
       },
