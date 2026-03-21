@@ -82,7 +82,7 @@ ACTION=$(sentinel_get_action "codeQuality" "block_standalone_pass")
 if [[ "$ACTION" != "off" ]]; then
   if ! $CTXMAP_PASS_OK && echo "$CONTENT" | grep -qP '^\s+pass\s*(#.*)?$'; then
     if ! echo "$CONTENT" | grep -qP '@abstractmethod|def __del__|def teardown|def tearDown|def cleanup|def close|finally\s*:'; then
-      MSG="  - 'pass' as standalone statement (implement the function body)\n"
+      MSG="  - 'pass' as standalone statement\n    → Read the function name + params + return type. Implement logic matching that signature.\n    → Check callers: grep -rn 'function_name' . — understand what they expect.\n    → If unsure what it should do, read the test file for this module first.\n"
       [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
     fi
   fi
@@ -93,7 +93,7 @@ ACTION=$(sentinel_get_action "codeQuality" "block_not_implemented")
 if [[ "$ACTION" != "off" ]]; then
   if ! $CTXMAP_RAISE_OK && echo "$CONTENT" | grep -qP 'raise NotImplementedError'; then
     if ! echo "$CONTENT" | grep -qP '@abstractmethod'; then
-      MSG="  - 'raise NotImplementedError' without @abstractmethod (implement the logic)\n"
+      MSG="  - 'raise NotImplementedError' without @abstractmethod\n    → This function needs real logic. grep -rn 'function_name' . to find callers.\n    → Read what callers pass in and what they do with the return value.\n    → Implement the actual computation/query/transformation, not a placeholder.\n"
       [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
     fi
   fi
@@ -103,7 +103,7 @@ fi
 ACTION=$(sentinel_get_action "codeQuality" "block_todo_comments")
 if [[ "$ACTION" != "off" ]]; then
   if echo "$CONTENT" | grep -qP '#\s*(TODO|FIXME|PLACEHOLDER|HACK|XXX)\b|//\s*(TODO|FIXME|PLACEHOLDER|HACK|XXX)\b'; then
-    MSG="  - TODO/FIXME/PLACEHOLDER/HACK comment (implement now, don't defer)\n"
+    MSG="  - TODO/FIXME/PLACEHOLDER/HACK comment found\n    → Read the comment text — it describes what needs to be done.\n    → Implement that logic NOW, then delete the comment.\n    → If the TODO requires external info you don't have, ask the user instead of leaving it.\n"
     [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
   fi
 fi
@@ -112,7 +112,7 @@ fi
 ACTION=$(sentinel_get_action "codeQuality" "block_meaningless_assertions")
 if [[ "$ACTION" != "off" ]]; then
   if echo "$CONTENT" | grep -qP 'assert\s+True|assert\s+1\s*==\s*1|assert\s+.*is\s+not\s+None\s*$|expect\(true\)\.toBe\(true\)'; then
-    MSG="  - Meaningless assertion (assert True / expect(true).toBe(true)) — test real behavior\n"
+    MSG="  - Meaningless assertion (assert True / expect(true).toBe(true))\n    → Call the function with specific inputs and assert the OUTPUT matches expected values.\n    → Example: assert get_user(id=1).name == 'expected_name'\n    → Test edge cases: empty input, invalid input, boundary values, error conditions.\n"
     [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
   fi
 fi
@@ -137,7 +137,7 @@ fi
 ACTION=$(sentinel_get_action "codeQuality" "block_empty_functions")
 if [[ "$ACTION" != "off" ]]; then
   if echo "$CONTENT" | grep -qP '^\s*def\s+\w+\(.*\).*:\s*\n\s+return\s*(None)?\s*(#.*)?$'; then
-    MSG="  - Empty function body (return None) — implement real logic\n"
+    MSG="  - Empty function body (return None immediately after def)\n    → Read the function name and return type to understand what it should return.\n    → Implement the actual query/computation/transformation.\n    → If it's a handler/callback, implement the event processing logic.\n"
     [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
   fi
 fi
@@ -146,11 +146,11 @@ fi
 ACTION=$(sentinel_get_action "codeQuality" "block_skipped_tests")
 if [[ "$ACTION" != "off" ]]; then
   if echo "$CONTENT" | grep -qP '@pytest\.mark\.skip\s*$|@pytest\.mark\.skip\(\s*\)|@unittest\.skip\s*$|@unittest\.skip\(\s*\)|\.skip\(\s*["\'\''"]\s*["\'\''"]\s*\)'; then
-    MSG="  - Skipped test without reason — provide skip reason or remove [Pattern #5]\n"
+    MSG="  - Skipped test without reason [Pattern #5]\n    → Either implement the test or delete it entirely.\n    → If skipping is necessary, provide a specific reason: @pytest.mark.skip(reason='...')\n"
     [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
   fi
   if echo "$CONTENT" | grep -qP '^\s*#\s*(def test_|class Test|it\(|describe\()'; then
-    MSG="  - Commented-out test code — delete or implement, don't comment out [Pattern #5]\n"
+    MSG="  - Commented-out test code [Pattern #5]\n    → Uncomment and fix the test, or delete it entirely.\n    → Commented-out code is dead code. Never keep it 'for later'.\n"
     [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
   fi
 fi
@@ -204,8 +204,13 @@ if [[ -n "$BLOCKS" ]]; then
     if [[ -n "$WARNINGS" ]]; then
       echo -e "Warnings:\n${WARNINGS}"
     fi
-    echo "Every function must have a real implementation. No stubs, no deferred work."
-    echo "→ Implement the actual logic, then retry."
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "HOW TO FIX:"
+    echo "  1. Read each violation's → guidance above"
+    echo "  2. For each function: check signature, callers, and tests"
+    echo "  3. Write real logic that processes inputs and returns correct outputs"
+    echo "  4. No stubs, no deferred work, no placeholders"
+    echo "  5. Retry this edit after implementing"
   } >&2
   sentinel_stats_increment "blocks"
   sentinel_stats_increment "pattern_dummy_code"
