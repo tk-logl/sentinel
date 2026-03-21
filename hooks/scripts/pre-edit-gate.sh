@@ -105,10 +105,121 @@ fi
 sentinel_stats_increment "checks"
 echo "✅ [Sentinel Pre-Edit Gate] Checklist passed: ${TASK_ID}"
 
+# ─── Behavior Spec Gate ───
+# Require .sentinel/specs/{task-id}.json with given/when/then/assert behaviors
+SPEC_ACTION=$(sentinel_get_action "workflow" "require_behavior_spec")
+if [[ "$SPEC_ACTION" != "off" ]]; then
+  SPEC_DIR="${PROJECT_ROOT}/.sentinel/specs"
+  SPEC_FILE="${SPEC_DIR}/${TASK_ID}.json"
+
+  if [[ ! -f "$SPEC_FILE" ]]; then
+    _spec_msg() {
+      echo "⛔ [Sentinel Spec Gate] Behavior spec not found: .sentinel/specs/${TASK_ID}.json"
+      echo ""
+      echo "Before implementing, you MUST create a behavior spec defining expected input/output."
+      echo ""
+      echo "Required file: .sentinel/specs/${TASK_ID}.json"
+      echo '{'
+      echo '  "task_id": "'"${TASK_ID}"'",'
+      echo '  "module": "apps/service/module.py",'
+      echo '  "functions": ["function_name"],'
+      echo '  "behavior": ['
+      echo '    {'
+      echo '      "id": "B1",'
+      echo '      "given": "specific input description",'
+      echo '      "when": "function is called with that input",'
+      echo '      "then": "specific expected output/behavior",'
+      echo '      "assert": "result.field == expected_value"'
+      echo '    },'
+      echo '    {'
+      echo '      "id": "B2",'
+      echo '      "given": "invalid/edge-case input",'
+      echo '      "when": "function is called",'
+      echo '      "then": "raises specific error",'
+      echo '      "assert": "pytest.raises(ValueError)"'
+      echo '    }'
+      echo '  ],'
+      echo '  "edge_cases": ["empty input", "null", "boundary values"]'
+      echo '}'
+      echo ""
+      echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      echo "HOW TO CREATE A GOOD SPEC:"
+      echo "  1. Read the function signature (params + return type)"
+      echo "  2. Write at least 3 behaviors: happy path, error case, edge case"
+      echo "  3. Each 'assert' must be a concrete Python expression (not 'works correctly')"
+      echo "  4. Include edge_cases: empty input, None, 0, MAX_INT, special chars"
+      echo "  5. Write .sentinel/specs/${TASK_ID}.json, then retry this edit"
+    }
+    if [[ "$SPEC_ACTION" == "block" ]]; then
+      _spec_msg >&2
+      sentinel_stats_increment "blocks"
+      sentinel_stats_increment "pattern_missing_spec"
+      exit 2
+    else
+      _spec_msg
+      sentinel_stats_increment "warnings"
+    fi
+  else
+    # Validate spec has behavior array with required fields
+    BEHAVIOR_COUNT=$(jq '.behavior | length' "$SPEC_FILE" 2>/dev/null || echo "0")
+    if [[ "$BEHAVIOR_COUNT" -lt 1 ]]; then
+      _spec_empty() {
+        echo "⛔ [Sentinel Spec Gate] Spec has no behaviors: .sentinel/specs/${TASK_ID}.json"
+        echo ""
+        echo "  The 'behavior' array is empty or missing."
+        echo "  → Add at least 3 behavior entries with given/when/then/assert fields."
+        echo "  → Each entry defines ONE expected input/output scenario."
+      }
+      if [[ "$SPEC_ACTION" == "block" ]]; then
+        _spec_empty >&2
+        sentinel_stats_increment "blocks"
+        exit 2
+      else
+        _spec_empty
+        sentinel_stats_increment "warnings"
+      fi
+    else
+      # Validate each behavior has required fields
+      INVALID=$(jq '[.behavior[] | select(.given == null or .then == null or .assert == null)] | length' "$SPEC_FILE" 2>/dev/null || echo "0")
+      if [[ "$INVALID" -gt 0 ]]; then
+        _spec_invalid() {
+          echo "⛔ [Sentinel Spec Gate] Spec has ${INVALID} behaviors missing required fields"
+          echo ""
+          echo "  Every behavior MUST have: given, then, assert"
+          echo "  → 'given': specific input/precondition"
+          echo "  → 'then': expected output/behavior"
+          echo "  → 'assert': concrete Python assertion expression"
+        }
+        if [[ "$SPEC_ACTION" == "block" ]]; then
+          _spec_invalid >&2
+          sentinel_stats_increment "blocks"
+          exit 2
+        else
+          _spec_invalid
+          sentinel_stats_increment "warnings"
+        fi
+      else
+        # Spec is valid — inject into AI context
+        echo ""
+        echo "=== Behavior Spec (${TASK_ID}) — ${BEHAVIOR_COUNT} behaviors ==="
+        jq -r '.behavior[] | "  [\(.id // "?")] GIVEN: \(.given) → THEN: \(.then) | ASSERT: \(.assert)"' "$SPEC_FILE" 2>/dev/null
+        EDGE_CASES=$(jq -r '.edge_cases // [] | join(", ")' "$SPEC_FILE" 2>/dev/null)
+        if [[ -n "$EDGE_CASES" ]]; then
+          echo "  Edge cases: ${EDGE_CASES}"
+        fi
+        INVARIANTS=$(jq -r '.invariants // [] | join(", ")' "$SPEC_FILE" 2>/dev/null)
+        if [[ -n "$INVARIANTS" ]]; then
+          echo "  Invariants: ${INVARIANTS}"
+        fi
+        echo "=== Implementation MUST pass ALL assertions above ==="
+      fi
+    fi
+  fi
+fi
+
 # Inject task spec from task-list if configured
 INJECT_SPEC=$(sentinel_read_config '.preImplGate.injectSpecOnAllow' 'true')
 if [[ "$INJECT_SPEC" == "true" ]]; then
-  # Use item_id or task_id from current-task.json
   ITEM_ID=$(jq -r '.item_id // .task_id // empty' "$TASK_FILE" 2>/dev/null)
   if [[ -n "$ITEM_ID" ]]; then
     SPEC=$(sentinel_task_get_spec "$ITEM_ID" 2>/dev/null)

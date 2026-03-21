@@ -28,6 +28,7 @@
     "workflow": {
       "require_pre_edit_checklist": "off",
       "inject_task_spec_on_allow": "off",
+      "require_behavior_spec": "off",
       "warn_scope_reduction_prompt": "off",
       "enforce_numbered_lists": "off",
       "completion_check": "off",
@@ -112,6 +113,7 @@
     "workflow": {
       "require_pre_edit_checklist": "off",
       "inject_task_spec_on_allow": "off",
+      "require_behavior_spec": "warn",
       "warn_scope_reduction_prompt": "warn",
       "enforce_numbered_lists": "off",
       "completion_check": "warn",
@@ -196,6 +198,7 @@
     "workflow": {
       "require_pre_edit_checklist": "block",
       "inject_task_spec_on_allow": "on",
+      "require_behavior_spec": "block",
       "warn_scope_reduction_prompt": "warn",
       "enforce_numbered_lists": "warn",
       "completion_check": "warn",
@@ -280,6 +283,7 @@
     "workflow": {
       "require_pre_edit_checklist": "block",
       "inject_task_spec_on_allow": "on",
+      "require_behavior_spec": "block",
       "warn_scope_reduction_prompt": "warn",
       "enforce_numbered_lists": "warn",
       "completion_check": "warn",
