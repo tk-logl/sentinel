@@ -111,8 +111,27 @@ fi
 # 4. Meaningless test assertions
 ACTION=$(sentinel_get_action "codeQuality" "block_meaningless_assertions")
 if [[ "$ACTION" != "off" ]]; then
-  if echo "$CONTENT" | grep -qP 'assert\s+True|assert\s+1\s*==\s*1|assert\s+.*is\s+not\s+None\s*$|expect\(true\)\.toBe\(true\)'; then
-    MSG="  - Meaningless assertion (assert True / expect(true).toBe(true))\n    → Call the function with specific inputs and assert the OUTPUT matches expected values.\n    → Example: assert get_user(id=1).name == 'expected_name'\n    → Test edge cases: empty input, invalid input, boundary values, error conditions.\n"
+  # 4a. Trivially true assertions
+  if echo "$CONTENT" | grep -qP 'assert\s+True|assert\s+1\s*==\s*1|expect\(true\)\.toBe\(true\)'; then
+    MSG="  - Trivially true assertion (assert True / 1==1)\n    → Call the function with specific inputs and assert the OUTPUT matches expected values.\n    → Example: assert get_user(id=1).name == 'expected_name'\n    → Test edge cases: empty input, invalid input, boundary values, error conditions.\n"
+    [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
+  fi
+  # 4b. assert X is not None as the ONLY assertion in a test function
+  if echo "$CONTENT" | grep -qP 'assert\s+\w+\s+is\s+not\s+None\s*$'; then
+    # Check if there's a more specific assertion after it
+    if ! echo "$CONTENT" | grep -qP 'assert\s+\w+\s*[=!<>]|assert\s+\w+\.\w+|assert\s+len\(|assert\s+isinstance'; then
+      MSG="  - Weak assertion: 'assert X is not None' without checking actual value\n    → Assert specific properties: assert result.name == 'expected'\n    → Check type, length, or field values — not just existence.\n"
+      [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
+    fi
+  fi
+  # 4c. mock.assert_called() without argument verification
+  if echo "$CONTENT" | grep -qP '\.assert_called\(\s*\)'; then
+    MSG="  - mock.assert_called() without verifying arguments\n    → Use assert_called_with(expected_arg1, expected_arg2) instead.\n    → Or use assert_called_once_with() to verify both call count and arguments.\n"
+    [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
+  fi
+  # 4d. assert len(X) >= 0 (always true for any collection)
+  if echo "$CONTENT" | grep -qP 'assert\s+len\(\w+\)\s*>=\s*0'; then
+    MSG="  - Always-true assertion: len(X) >= 0 is true for any collection\n    → Assert a specific expected length: assert len(result) == 3\n    → Or check content: assert result[0].name == 'expected'\n"
     [[ "$ACTION" == "block" ]] && BLOCKS="${BLOCKS}${MSG}" || WARNINGS="${WARNINGS}${MSG}"
   fi
 fi
