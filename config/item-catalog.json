@@ -378,6 +378,21 @@
           }
         },
         {
+          "key": "require_behavior_spec",
+          "title": "구현 전 행동 스펙 필수",
+          "description": "소스 코드를 편집하기 전에 .sentinel/specs/{task-id}.json 파일에 행동 스펙(given/when/then/assert)이 있어야 합니다. AI가 함수별 입출력을 미리 정의해야 구현을 시작할 수 있습니다.",
+          "blocked_example": ".sentinel/specs/CRIT-2.json 없이 services.py 편집 시도 → 차단\n스펙 템플릿 + 작성 가이드 표시",
+          "allowed_example": ".sentinel/specs/CRIT-2.json에 behavior 3개 (happy/error/edge) 정의 후 편집 → 허용\n스펙의 assert 표현식이 AI 컨텍스트에 자동 주입됨",
+          "exception_note": "테스트 파일, 설정 파일, 문서는 스펙 없이 편집 가능합니다. spec-to-test.py로 스펙에서 pytest 스켈레톤을 자동 생성할 수 있습니다.",
+          "hook": "pre-edit-gate.sh",
+          "defaults": {
+            "relaxed": "off",
+            "standard": "warn",
+            "strict": "block",
+            "paranoid": "block"
+          }
+        },
+        {
           "key": "warn_scope_reduction_prompt",
           "title": "사용자 프롬프트 범위축소 감지",
           "description": "사용자가 '간단하게만', '기본적인 것만' 같은 범위축소 표현을 사용할 때 경고합니다.",
