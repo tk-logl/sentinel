@@ -9,7 +9,7 @@ Prevents 47 common AI coding mistakes. Automatically.
 [![CI](https://github.com/tk-logl/sentinel/actions/workflows/test.yml/badge.svg)](https://github.com/tk-logl/sentinel/actions/workflows/test.yml)
 [![ShellCheck](https://img.shields.io/badge/ShellCheck-passing-brightgreen)](https://www.shellcheck.net/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.4.0-orange)](https://github.com/tk-logl/sentinel/releases/tag/v1.4.0)
+[![Version](https://img.shields.io/badge/version-1.6.0-orange)](https://github.com/tk-logl/sentinel/releases/tag/v1.6.0)
 
 [Install](#install) · [How It Works](#how-it-works) · [Configuration](#configuration) · [FAQ](#faq)
 
@@ -42,7 +42,7 @@ claude plugin install github:tk-logl/sentinel
 /sentinel:init
 ```
 
-That's it. All 19 hooks are now active. No configuration required.
+That's it. All 21 hooks are now active. No configuration required.
 
 ## Demo: What You'll See
 
@@ -84,14 +84,14 @@ Never hardcode credentials. Use:
 
 ## How It Works
 
-Sentinel registers **19 hooks** across 9 Claude Code event types. They fire automatically — you don't call them.
+Sentinel registers **21 hooks** across 9 Claude Code event types. They fire automatically — you don't call them.
 
 ### Blocking Hooks (prevents the action)
 
 | Hook | Trigger | What It Blocks |
 |------|---------|---------------|
-| `pre-edit-gate` | Before Write/Edit | Source edits without `.sentinel/current-task.json` |
-| `deny-dummy` | Before Write/Edit | `pass`, `TODO`, `assert True`, debug prints, unsafe deserialization (context-map aware) |
+| `pre-edit-gate` | Before Write/Edit | Source edits without `.sentinel/current-task.json` + behavior spec (v1.6.0) |
+| `deny-dummy` | Before Write/Edit | `pass`, `TODO`, `assert True`, `mock.assert_called()`, `len>=0`, `is not None`, debug prints, unsafe deserialization |
 | `secret-scan` | Before Write/Edit | API keys (sk-, ghp_, AKIA, xoxb-, AIza, eyJ...), private keys, DB passwords |
 | `scope-reduction-guard` | Before Write/Edit | Scope reduction in code comments (21 Korean + 16 English + 5 Japanese patterns) |
 | `env-safety` | Before Bash | `brew` on Linux, bare `python`, `rm -rf /`, `--no-verify` |
@@ -107,8 +107,10 @@ Sentinel registers **19 hooks** across 9 Claude Code event types. They fire auto
 | `file-header-check` | After Write/Edit | Files >200 lines without descriptive headers |
 | `task-completion-gate` | After TaskUpdate | Evidence check before marking tasks completed |
 | `completion-check` | AI stops | Uncommitted changes, active tasks, TODO in changed files, task-list status |
+| `spec-verify` | AI stops | Validates all behavior spec assertions appear in test files (v1.6.0) |
+| `spec-auto-test` | After Write/Edit | Auto-generates pytest skeleton from `.sentinel/specs/*.json` (v1.6.0) |
 
-### Task Lifecycle (v1.4.0)
+### Task Lifecycle
 
 | Hook | Trigger | What It Does |
 |------|---------|-------------|
@@ -153,7 +155,7 @@ Sentinel registers **19 hooks** across 9 Claude Code event types. They fire auto
 
 ## Features
 
-### Task Lifecycle (v1.4.0)
+### Task Lifecycle
 
 Sentinel auto-detects your task list (`tasks.md`, `.claude/action-list.md`, etc.) and tracks progress:
 
@@ -163,7 +165,7 @@ Sentinel auto-detects your task list (`tasks.md`, `.claude/action-list.md`, etc.
 - **Numbered lists**: enforces complete implementation of all items
 - **Completion**: warns if uncommitted changes or TODO/FIXME remain
 
-### Context-Aware Analysis (v1.4.0)
+### Context-Aware Analysis
 
 `build-context-map.py` analyzes your project using Python AST and TS/JS regex:
 
@@ -183,7 +185,7 @@ Sentinel auto-detects your task list (`tasks.md`, `.claude/action-list.md`, etc.
 
 `deny-dummy.sh` uses this map to **allow** `pass` in abstract methods and cleanup functions while **blocking** it in real stubs.
 
-### i18n (v1.3.0)
+### i18n
 
 Sentinel auto-detects your locale and outputs messages in your language:
 
@@ -198,7 +200,7 @@ Set explicitly in `.sentinel/config.json`:
 { "language": "ko" }
 ```
 
-### Usage Statistics (v1.3.0)
+### Usage Statistics
 
 Every hook activation is tracked in `.sentinel/stats.json`. When the session ends, you get a quality report with:
 - Checks passed / blocks prevented / warnings issued
@@ -217,12 +219,49 @@ Use sentinel-reviewer agent to review this PR
 Use sentinel-verifier agent to verify this task is complete
 ```
 
+### TDD Enforcement (v1.6.0)
+
+Sentinel enforces Test-Driven Development by requiring behavior specs before code edits:
+
+1. **Spec Gate**: `pre-edit-gate.sh` blocks code edits unless `.sentinel/specs/{task-id}.json` exists with `given/when/then/assert` behaviors
+2. **Spec→Test**: `spec-to-test.py` converts spec JSON to pytest skeleton — assertions copied verbatim (AI cannot weaken them)
+3. **Auto-Trigger**: `spec-auto-test.sh` runs spec-to-test automatically when a spec file is written
+4. **Spec Verify**: `spec-verify.sh` validates all spec assertions appear in actual test files at session end
+5. **Mutation Testing**: `/sentinel:mutate` runs mutmut on changed files (70% kill threshold)
+
+```json
+// .sentinel/specs/CRIT-2.json
+{
+  "task_id": "CRIT-2",
+  "module": "apps/service/views.py",
+  "functions": ["create_user"],
+  "behavior": [
+    {
+      "id": "B1",
+      "given": "valid user data",
+      "when": "create_user is called",
+      "then": "returns User with matching email",
+      "assert": "result.email == 'test@example.com'"
+    },
+    {
+      "id": "B2",
+      "given": "duplicate email",
+      "when": "create_user is called",
+      "then": "raises ValueError",
+      "assert": "pytest.raises(ValueError)"
+    }
+  ],
+  "edge_cases": ["empty string", "None", "email without @"]
+}
+```
+
 ### Slash Commands
 
 ```
 /sentinel:init                    # Initialize .sentinel/ (detects project type)
 /sentinel:check                   # Full project rule compliance scan
 /sentinel:header path/to/file.py  # Generate file header comment
+/sentinel:mutate                  # Run mutation testing on changed files (v1.6.0)
 ```
 
 ### Skills (reference guides)
@@ -253,9 +292,9 @@ After `/sentinel:init`, configure at `.sentinel/config.json`:
 }
 ```
 
-### Preset Modes (v1.5.0)
+### Preset Modes
 
-Choose a mode to set defaults for all 65 items at once:
+Choose a mode to set defaults for all 66 items at once:
 
 | Mode | Philosophy | Blocking | Warnings |
 |------|-----------|----------|----------|
@@ -287,7 +326,7 @@ Override any item within its category:
 |----------|-------|-----------------|
 | `codeQuality` | 12 | pass, TODO, assert True, debug prints, empty functions, unsafe deserialization |
 | `security` | 9 | API keys, tokens, credentials, private keys, connection strings |
-| `workflow` | 9 | Pre-edit checklist, scope guard, task tracking, completion checks |
+| `workflow` | 10 | Pre-edit checklist, behavior spec gate, scope guard, task tracking, completion checks |
 | `safetyNet` | 13 | Dangerous commands, force push, protected branches, destructive SQL |
 | `editDiscipline` | 4 | Large edits, file overwrites, function deletion, file headers |
 | `context` | 5 | Session init, state preservation, compaction restore |
