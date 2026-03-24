@@ -110,7 +110,7 @@ Sentinel registers **21 hooks** across 9 Claude Code event types. They fire auto
 | `spec-verify` | AI stops | Validates all behavior spec assertions appear in test files (v1.6.0) |
 | `spec-auto-test` | After Write/Edit | Auto-generates pytest skeleton from `.sentinel/specs/*.json` (v1.6.0) |
 
-### Task Lifecycle
+### Task Lifecycle (v1.4.0)
 
 | Hook | Trigger | What It Does |
 |------|---------|-------------|
@@ -155,7 +155,7 @@ Sentinel registers **21 hooks** across 9 Claude Code event types. They fire auto
 
 ## Features
 
-### Task Lifecycle
+### Task Lifecycle (v1.4.0)
 
 Sentinel auto-detects your task list (`tasks.md`, `.claude/action-list.md`, etc.) and tracks progress:
 
@@ -165,7 +165,7 @@ Sentinel auto-detects your task list (`tasks.md`, `.claude/action-list.md`, etc.
 - **Numbered lists**: enforces complete implementation of all items
 - **Completion**: warns if uncommitted changes or TODO/FIXME remain
 
-### Context-Aware Analysis
+### Context-Aware Analysis (v1.4.0)
 
 `build-context-map.py` analyzes your project using Python AST and TS/JS regex:
 
@@ -185,7 +185,7 @@ Sentinel auto-detects your task list (`tasks.md`, `.claude/action-list.md`, etc.
 
 `deny-dummy.sh` uses this map to **allow** `pass` in abstract methods and cleanup functions while **blocking** it in real stubs.
 
-### i18n
+### i18n (v1.3.0)
 
 Sentinel auto-detects your locale and outputs messages in your language:
 
@@ -200,7 +200,7 @@ Set explicitly in `.sentinel/config.json`:
 { "language": "ko" }
 ```
 
-### Usage Statistics
+### Usage Statistics (v1.3.0)
 
 Every hook activation is tracked in `.sentinel/stats.json`. When the session ends, you get a quality report with:
 - Checks passed / blocks prevented / warnings issued
@@ -292,7 +292,7 @@ After `/sentinel:init`, configure at `.sentinel/config.json`:
 }
 ```
 
-### Preset Modes
+### Preset Modes (v1.5.0)
 
 Choose a mode to set defaults for all 66 items at once:
 
