@@ -15,6 +15,7 @@ section() { printf "\n${BOLD}--- %s ---${RESET}\n" "$1"; }
 # --- Setup ---
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)/hooks/scripts"
 TMPDIR_ROOT=$(mktemp -d)
+TMPDIR_ROOT=$(cd "$TMPDIR_ROOT" && pwd -P)  # Resolve symlinks (macOS /var -> /private/var)
 trap 'rm -rf "$TMPDIR_ROOT"' EXIT
 
 # Create fake git project

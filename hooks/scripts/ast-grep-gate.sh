@@ -73,7 +73,7 @@ esac
 
 # Run ast-grep scan on the single file with the rule file
 # --report-style short for compact output
-SCAN_OUT=$(timeout 10 ast-grep scan -r "$RULE_FILE" "$FILE_PATH" 2>/dev/null)
+SCAN_OUT=$(_timeout 10 ast-grep scan -r "$RULE_FILE" "$FILE_PATH" 2>/dev/null)
 SCAN_EXIT=$?
 
 # ast-grep exit 1 = errors found, exit 0 = clean, exit >1 = tool error
