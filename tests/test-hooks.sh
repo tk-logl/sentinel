@@ -173,9 +173,12 @@ GT="${GATE_PROJ}/src/app.py"
   [[ $HOOK_EXIT -eq 2 ]] && _pass "no task file -> blocked" || _fail "no task file" "exit=$HOOK_EXIT" )
 
 # Valid task file -> allow
-mkdir -p "${GATE_PROJ}/.sentinel"
+mkdir -p "${GATE_PROJ}/.sentinel/specs"
 cat > "${GATE_PROJ}/.sentinel/current-task.json" << 'EOF'
 {"task_id":"T-1","why":"fix","approach":"A","impact_files":["a.py"],"blast_radius":{"tests_break":[],"tests_add":[]},"verify_command":"pytest"}
+EOF
+cat > "${GATE_PROJ}/.sentinel/specs/T-1.json" << 'EOF'
+{"task_id":"T-1","module":"src/app.py","functions":["main"],"behavior":[{"id":"B1","given":"input","when":"called","then":"returns","assert":"result == True"}]}
 EOF
 ( cd "$GATE_PROJ"; run_hook "pre-edit-gate.sh" "$(write_json "$GT" "x = 1")"
   [[ $HOOK_EXIT -eq 0 ]] && _pass "valid task -> allowed" || _fail "valid task" "exit=$HOOK_EXIT" )
@@ -212,15 +215,15 @@ section "6. scope-guard.sh"
 # ===================================================================
 
 run_hook "scope-guard.sh" "$(prompt_json "just use a placeholder for the API")"
-[[ $HOOK_EXIT -eq 0 ]] && echo "$HOOK_OUTPUT" | grep -qi "Scope" \
+[[ $HOOK_EXIT -eq 0 ]] && echo "$HOOK_OUTPUT" | grep -qi "Scope reduction" \
   && _pass "'placeholder' -> warning" || _fail "placeholder" "exit=$HOOK_EXIT"
 
 run_hook "scope-guard.sh" "$(prompt_json "skip the test, will add later")"
-[[ $HOOK_EXIT -eq 0 ]] && echo "$HOOK_OUTPUT" | grep -qi "Scope" \
+[[ $HOOK_EXIT -eq 0 ]] && echo "$HOOK_OUTPUT" | grep -qi "Scope reduction" \
   && _pass "'will add later' -> warning" || _fail "will add later" "exit=$HOOK_EXIT"
 
 run_hook "scope-guard.sh" "$(prompt_json "fix the login bug where passwords are not hashed")"
-[[ $HOOK_EXIT -eq 0 ]] && ! echo "$HOOK_OUTPUT" | grep -qi "Scope" \
+[[ $HOOK_EXIT -eq 0 ]] && ! echo "$HOOK_OUTPUT" | grep -qi "Scope reduction" \
   && _pass "normal prompt -> no warning" || _fail "normal prompt" "exit=$HOOK_EXIT"
 
 # ===================================================================
@@ -263,12 +266,12 @@ section "9. file-header-check.sh"
 
 LONG_F=$(make_project_file ".py" "$(printf 'x = %d\n' $(seq 1 300))")
 run_hook "file-header-check.sh" "$(post_edit_json "Edit" "$LONG_F")"
-[[ $HOOK_EXIT -eq 0 ]] && echo "$HOOK_OUTPUT" | grep -qi "header" \
+[[ $HOOK_EXIT -eq 0 ]] && echo "$HOOK_OUTPUT" | grep -qi "has no header" \
   && _pass "300-line no header -> warning" || _fail "300-line" "exit=$HOOK_EXIT"
 
 SHORT_F=$(make_project_file ".py" "$(printf 'x = %d\n' $(seq 1 50))")
 run_hook "file-header-check.sh" "$(post_edit_json "Edit" "$SHORT_F")"
-[[ $HOOK_EXIT -eq 0 ]] && ! echo "$HOOK_OUTPUT" | grep -qi "header" \
+[[ $HOOK_EXIT -eq 0 ]] && ! echo "$HOOK_OUTPUT" | grep -qi "has no header" \
   && _pass "50-line -> no warning" || _fail "50-line" "exit=$HOOK_EXIT"
 
 # ===================================================================
@@ -705,6 +708,7 @@ echo "puts 'hello'" > "$DYN_PROJ/app.rb"
 
 # Clean project -> no issues
 rm -f "$DYN_PROJ/app.rb"
+rm -f "$DYN_PROJ/.sentinel/.completion-check-last"
 ( cd "$DYN_PROJ"
   run_hook "completion-check.sh" "{}"
   echo "$HOOK_OUTPUT" | grep -qi "No issues" \
@@ -758,7 +762,7 @@ touch "$ERL_PROJ/.gitkeep"; git -C "$ERL_PROJ" add -A; git -C "$ERL_PROJ" commit
 
 # Create 2 identical error log entries -> should trigger stuck warning (limit=2)
 mkdir -p "$ERL_PROJ/.sentinel"
-HASH=$(echo "pytesttest" | md5sum | cut -c1-8)
+HASH=$(echo "pytest||test" | md5sum | cut -c1-8)
 printf '{"ts":"2026-01-01","type":"test","exit":"1","hash":"%s","cmd":"pytest","output":"FAILED"}\n' "$HASH" > "$ERL_PROJ/.sentinel/error-log.jsonl"
 printf '{"ts":"2026-01-01","type":"test","exit":"1","hash":"%s","cmd":"pytest","output":"FAILED"}\n' "$HASH" >> "$ERL_PROJ/.sentinel/error-log.jsonl"
 

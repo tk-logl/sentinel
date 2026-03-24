@@ -58,7 +58,6 @@ fi
 EXT="${FILE_PATH##*.}"
 RULES_DIR="${SCRIPT_DIR}/../rules"
 RULE_FILE=""
-VIOLATIONS=""
 
 # Select rule file based on extension
 case "$EXT" in
@@ -86,8 +85,6 @@ if [[ $SCAN_EXIT -eq 1 && -n "$SCAN_OUT" ]]; then
   [[ -z "$WARN_COUNT" ]] && WARN_COUNT=0
 
   # Extract violation summaries (rule id + message lines)
-  VIOLATIONS=$(echo "$SCAN_OUT" | grep -E '^(error|warning)\[' | head -10)
-
   if [[ $ERROR_COUNT -gt 0 ]]; then
     if [[ "$ACTION" == "block" ]]; then
       {

@@ -77,11 +77,9 @@ if [[ "$EXT" == "py" ]]; then
     FILE_BASE=$(basename "$FILE_PATH")
     # First try with project config (from file's directory)
     MYPY_RAW=$(cd "$FILE_DIR" && timeout 15 mypy "$FILE_BASE" --strict --no-color-output --no-error-summary --ignore-missing-imports 2>&1)
-    MYPY_EXIT=$?
     # If plugin error, retry without config
     if echo "$MYPY_RAW" | grep -q 'Error importing plugin' 2>/dev/null; then
       MYPY_RAW=$(cd "$FILE_DIR" && timeout 15 mypy "$FILE_BASE" --strict --no-color-output --no-error-summary --ignore-missing-imports --config-file /dev/null 2>&1)
-      MYPY_EXIT=$?
     fi
     # Filter to only errors in this specific file (not imports/deps)
     MYPY_OUT=$(echo "$MYPY_RAW" | grep -P "^${FILE_BASE}:\d+: error:" | head -10)
