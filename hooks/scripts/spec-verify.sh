@@ -32,7 +32,8 @@ BEHAVIOR_COUNT=$(jq '.behavior | length' "$SPEC_FILE" 2>/dev/null || echo "0")
 
 # Find test files — look in common locations
 MODULE=$(jq -r '.module // empty' "$SPEC_FILE" 2>/dev/null)
-FUNC_NAMES=$(jq -r '.functions // [] | .[]' "$SPEC_FILE" 2>/dev/null)
+# shellcheck disable=SC2034  # reserved for future per-function matching
+_FUNC_NAMES=$(jq -r '.functions // [] | .[]' "$SPEC_FILE" 2>/dev/null)
 
 # Build list of candidate test files
 TEST_FILES=""
@@ -91,8 +92,6 @@ while IFS= read -r behavior_json; do
 
   # Check 1: assert expression appears in test code (exact or partial match)
   # Escape special regex chars for grep
-  ASSERT_ESCAPED=$(echo "$ASSERT_EXPR" | sed 's/[.[\*^$()+?{|]/\\&/g')
-  
   FOUND=false
   for tf in $TEST_FILES; do
     if [[ -f "$tf" ]] && grep -qF "$ASSERT_EXPR" "$tf" 2>/dev/null; then

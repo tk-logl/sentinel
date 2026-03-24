@@ -58,7 +58,6 @@ fi
 EXT="${FILE_PATH##*.}"
 RULES_DIR="${SCRIPT_DIR}/../rules"
 RULE_FILE=""
-VIOLATIONS=""
 
 # Select rule file based on extension
 case "$EXT" in
@@ -74,7 +73,7 @@ esac
 
 # Run ast-grep scan on the single file with the rule file
 # --report-style short for compact output
-SCAN_OUT=$(timeout 10 ast-grep scan -r "$RULE_FILE" "$FILE_PATH" 2>/dev/null)
+SCAN_OUT=$(_timeout 10 ast-grep scan -r "$RULE_FILE" "$FILE_PATH" 2>/dev/null)
 SCAN_EXIT=$?
 
 # ast-grep exit 1 = errors found, exit 0 = clean, exit >1 = tool error
@@ -86,8 +85,6 @@ if [[ $SCAN_EXIT -eq 1 && -n "$SCAN_OUT" ]]; then
   [[ -z "$WARN_COUNT" ]] && WARN_COUNT=0
 
   # Extract violation summaries (rule id + message lines)
-  VIOLATIONS=$(echo "$SCAN_OUT" | grep -E '^(error|warning)\[' | head -10)
-
   if [[ $ERROR_COUNT -gt 0 ]]; then
     if [[ "$ACTION" == "block" ]]; then
       {

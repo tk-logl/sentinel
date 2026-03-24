@@ -175,7 +175,7 @@ if [[ "$ACTION" != "off" ]]; then
         RESOLVED_CMD="${LINTER_CMD//\{file\}/$FILE_PATH}"
         # Run with timeout (5s max)
         LINTER_EXIT=0
-        LINTER_OUTPUT=$(timeout 5 bash -c "$RESOLVED_CMD" 2>&1) || LINTER_EXIT=$?
+        LINTER_OUTPUT=$(_timeout 5 bash -c "$RESOLVED_CMD" 2>&1) || LINTER_EXIT=$?
         if [[ -n "$LINTER_OUTPUT" && "$LINTER_EXIT" -ne 0 ]]; then
           LINT_LINES=$(echo "$LINTER_OUTPUT" | head -10)
           LINT_COUNT=$(echo "$LINTER_OUTPUT" | wc -l)

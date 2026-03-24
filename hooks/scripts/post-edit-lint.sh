@@ -76,12 +76,10 @@ if [[ "$EXT" == "py" ]]; then
     FILE_DIR=$(dirname "$FILE_PATH")
     FILE_BASE=$(basename "$FILE_PATH")
     # First try with project config (from file's directory)
-    MYPY_RAW=$(cd "$FILE_DIR" && timeout 15 mypy "$FILE_BASE" --strict --no-color-output --no-error-summary --ignore-missing-imports 2>&1)
-    MYPY_EXIT=$?
+    MYPY_RAW=$(cd "$FILE_DIR" && _timeout 15 mypy "$FILE_BASE" --strict --no-color-output --no-error-summary --ignore-missing-imports 2>&1)
     # If plugin error, retry without config
     if echo "$MYPY_RAW" | grep -q 'Error importing plugin' 2>/dev/null; then
-      MYPY_RAW=$(cd "$FILE_DIR" && timeout 15 mypy "$FILE_BASE" --strict --no-color-output --no-error-summary --ignore-missing-imports --config-file /dev/null 2>&1)
-      MYPY_EXIT=$?
+      MYPY_RAW=$(cd "$FILE_DIR" && _timeout 15 mypy "$FILE_BASE" --strict --no-color-output --no-error-summary --ignore-missing-imports --config-file /dev/null 2>&1)
     fi
     # Filter to only errors in this specific file (not imports/deps)
     MYPY_OUT=$(echo "$MYPY_RAW" | grep -P "^${FILE_BASE}:\d+: error:" | head -10)
@@ -112,7 +110,7 @@ if [[ "$EXT" == "ts" || "$EXT" == "tsx" ]]; then
   if [[ -n "$TSCONFIG" ]]; then
     TSC_DIR=$(dirname "$TSCONFIG")
     # Check if npx tsc is available (timeout 15s to prevent hangs)
-    TSC_OUT=$(cd "$TSC_DIR" && timeout 15 npx tsc --noEmit --pretty false 2>/dev/null | grep "$(basename "$FILE_PATH")" | head -10)
+    TSC_OUT=$(cd "$TSC_DIR" && _timeout 15 npx tsc --noEmit --pretty false 2>/dev/null | grep "$(basename "$FILE_PATH")" | head -10)
     if [[ -n "$TSC_OUT" ]]; then
       TSC_COUNT=$(echo "$TSC_OUT" | wc -l)
       VIOLATIONS="${VIOLATIONS}  TypeScript found ${TSC_COUNT} type error(s) in this file:\n"

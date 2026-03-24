@@ -13,6 +13,30 @@ echo "Sentinel: ${_SENTINEL_HOOK_NAME}" >&2
 SENTINEL_OS="$(uname -s)"
 export SENTINEL_OS
 
+# --- Cross-platform sed -i ---
+# macOS BSD sed requires -i '' (backup extension), GNU sed uses -i (no argument).
+_sed_inplace() {
+  if [[ "$SENTINEL_OS" == "Darwin" ]]; then
+    sed -i '' "$@"
+  else
+    sed -i "$@"
+  fi
+}
+
+# --- Cross-platform timeout ---
+# macOS does not ship GNU timeout. Use gtimeout (brew install coreutils) or skip.
+_timeout() {
+  if command -v timeout &>/dev/null; then
+    timeout "$@"
+  elif command -v gtimeout &>/dev/null; then
+    gtimeout "$@"
+  else
+    # No timeout available — run without time limit (skip first arg = seconds)
+    shift
+    "$@"
+  fi
+}
+
 # --- PCRE grep compatibility ---
 # All sentinel hooks use grep -P (Perl regex).
 # macOS ships BSD grep which does NOT support -P.
@@ -719,7 +743,7 @@ sentinel_task_mark() {
   [[ -z "$line_num" ]] && return 1
 
   # Replace the checkbox marker on that specific line
-  sed -i "${line_num}s/- \[[ x~]\]/- ${marker}/" "$tf"
+  _sed_inplace "${line_num}s/- \[[ x~]\]/- ${marker}/" "$tf"
 
   # Append metadata (e.g., commit hash) if marking done
   if [[ "$new_state" == "done" && -n "$metadata" ]]; then
@@ -729,9 +753,9 @@ sentinel_task_mark() {
     safe_id=$(printf '%s' "$item_id" | sed 's/[&/\]/\\&/g')
     # Try bold format (**ID**) first, then plain ID
     if sed -n "${line_num}p" "$tf" | grep -q "\*\*${item_id}\*\*" 2>/dev/null; then
-      sed -i "${line_num}s/\*\*${safe_id}\*\*/\*\*${safe_id}\*\* ${safe_meta}/" "$tf"
+      _sed_inplace "${line_num}s/\*\*${safe_id}\*\*/\*\*${safe_id}\*\* ${safe_meta}/" "$tf"
     else
-      sed -i "${line_num}s/${safe_id}/${safe_id} ${safe_meta}/" "$tf" 2>/dev/null || true
+      _sed_inplace "${line_num}s/${safe_id}/${safe_id} ${safe_meta}/" "$tf" 2>/dev/null || true
     fi
   fi
 

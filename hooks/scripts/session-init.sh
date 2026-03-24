@@ -187,7 +187,9 @@ if should_check_version && command -v curl &>/dev/null; then
 fi
 _semver_newer() {
   # Returns 0 if $1 > $2 (semver comparison)
-  local IFS='.'; local -a a=($1) b=($2)
+  local -a a b
+  IFS='.' read -ra a <<< "$1"
+  IFS='.' read -ra b <<< "$2"
   for i in 0 1 2; do
     local av=${a[$i]:-0} bv=${b[$i]:-0}
     (( av > bv )) && return 0
